@@ -11,6 +11,22 @@ from nav_msgs.msg import Odometry
 
 import sys
 
+### ROOM MONITOR MODULE BEGIN
+import pygame
+class RoomMonitor:
+    def __init__(self):
+        pygame.init()
+        self.screen = pygame.display.set_mode((800, 600))
+        pygame.display.set_caption("Room live feedback")
+
+    def update(self):
+        #for event in pygame.event.get():
+            #if event.type == pygame.QUIT:
+                #pygame.quit()
+                #exit()
+        self.screen.fill((0, 0, 0))
+        pygame.display.flip()
+### ROOM MONITOR MODULE END
 
 
 ########## PARTE FINAL SEGUNDA ENTREGA PARA TENERLO GUARDADO
@@ -43,6 +59,8 @@ class ControllerNode(Node):
         self.wall_angle = None
         self.tolerance = 0.05
         self.wall_ideal_distance = None
+
+        self.room_monitor = RoomMonitor()
 
     def make_callback(self, index):
 
@@ -303,6 +321,7 @@ class ControllerNode(Node):
 
             self.vel_publisher.publish(cmd_vel)
 
+        self.room_monitor.update()
 
 
 
