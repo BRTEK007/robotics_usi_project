@@ -13,19 +13,43 @@ import sys
 
 ### ROOM MONITOR MODULE BEGIN
 import pygame
-class RoomMonitor:
+
+class RoomMapper:
+    """Create a map of the room based on the measurments from the robot."""
+    def __init__(self, logger):
+        self.map = None
+        self.logger = logger
+        self.pose_list = []
+    
+    def update(self, measurment):
+        """Update map based on measurment"""
+        #self.logger.info(
+            #"odometry: received pose (x: {:.2f}, y: {:.2f}, theta: {:.2f})".format(
+                #*measurment.pose
+            #),
+            #throttle_duration_sec=0.5,
+        #)
+        self.pose_list.append(measurment.pose)
+
+class MappingMonitor:
+    """Draws room mapping to the screen."""
     def __init__(self):
         pygame.init()
         self.screen = pygame.display.set_mode((800, 600))
         pygame.display.set_caption("Room live feedback")
 
-    def update(self):
+    def draw(self, room_mapper):
         #for event in pygame.event.get():
             #if event.type == pygame.QUIT:
                 #pygame.quit()
                 #exit()
         self.screen.fill((0, 0, 0))
         pygame.display.flip()
+
+class MeasurmentData:
+    def __init__(self, pose, sensor_data):
+        self.pose = pose                 # robot pose
+        self.sensor_data = sensor_data   # sensor measurments
 ### ROOM MONITOR MODULE END
 
 
@@ -45,7 +69,7 @@ class ControllerNode(Node):
 
         self.ranges = [None] * 4
         self.sensor_subs = [
-            self.create_subscription(Range, f"range_{i}", self.make_callback(i), 10)
+            self.create_subscription(Range, f"range_{i}", self.make_sensor_callback(i), 10)
             for i in range(4)
         ]
 
@@ -60,9 +84,10 @@ class ControllerNode(Node):
         self.tolerance = 0.05
         self.wall_ideal_distance = None
 
-        self.room_monitor = RoomMonitor()
+        self.room_monitor = MappingMonitor()
+        self.room_mapper = RoomMapper(logger=self.get_logger())
 
-    def make_callback(self, index):
+    def make_sensor_callback(self, index):
 
         def callback(msg):
             self.ranges[index] = msg.range
@@ -71,6 +96,8 @@ class ControllerNode(Node):
 
     def start(self):
         self.timer = self.create_timer(0.1, self.control_loop)
+        self.timer_mapper_loop = self.create_timer(0.1, self.mapping_loop)
+        self.timer_monitor_loop = self.create_timer(0.1, self.monitor_loop)
 
     def stop(self):
         cmd_vel = Twist()
@@ -163,6 +190,16 @@ class ControllerNode(Node):
             return "wall_detected"
     
         return "continuar_girando"
+
+    def monitor_loop(self):
+        """Calls the mapping monitor to draw to the screen."""
+        self.room_monitor.draw(room_mapper=self.room_mapper)
+
+    def mapping_loop(self):
+        """Updates the room mapper based on measurments from scanners."""
+        self.room_mapper.update(
+            MeasurmentData(pose = self.pose2d, sensor_data=self.ranges))
+
 
     def control_loop(self):
         if None in self.ranges:
@@ -320,9 +357,6 @@ class ControllerNode(Node):
                 # self.get_logger().info("Wall infront")
 
             self.vel_publisher.publish(cmd_vel)
-
-        self.room_monitor.update()
-
 
 
 def main():
