@@ -15,6 +15,9 @@ import sys
 import pygame
 
 class RoomMapper:
+    RM_DIMS = (0.215, 0.101) # robomaster dimensions (x,y)
+
+
     """Create a map of the room based on the measurments from the robot."""
     def __init__(self, logger):
         self.map = None
@@ -32,18 +35,44 @@ class RoomMapper:
         self.pose_list.append(measurment.pose)
 
 class MappingMonitor:
+    SCREEN_DIMS = (800, 800)
     """Draws room mapping to the screen."""
     def __init__(self):
         pygame.init()
-        self.screen = pygame.display.set_mode((800, 600))
+        self.screen = pygame.display.set_mode(MappingMonitor.SCREEN_DIMS)
         pygame.display.set_caption("Room live feedback")
+        #self.world_to_screen_scaling = 200 # meters in world to pixels on the screen
 
     def draw(self, room_mapper):
-        #for event in pygame.event.get():
-            #if event.type == pygame.QUIT:
-                #pygame.quit()
-                #exit()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                exit()
         self.screen.fill((0, 0, 0))
+
+        if len(room_mapper.pose_list) < 2:
+            return
+
+        path_max_x = max(pose[0] for pose in room_mapper.pose_list)
+        path_min_x = min(pose[0] for pose in room_mapper.pose_list)
+        path_max_y = max(pose[1] for pose in room_mapper.pose_list)
+        path_min_y = min(pose[1] for pose in room_mapper.pose_list)
+
+        path_size = (path_max_x-path_min_x, path_max_y-path_min_y)
+        path_center = ((path_max_x + path_min_x)/2.0, (path_max_y + path_min_y)/2.0)
+
+        path_size = (max(path_size[0], 1), max(path_size[1], 1))
+
+        path_to_screen_scaling = 0.8 * min(MappingMonitor.SCREEN_DIMS[0]/path_size[0], MappingMonitor.SCREEN_DIMS[1]/path_size[1])
+
+        for path_pos in room_mapper.pose_list:
+            px,py,theta = path_pos[0], path_pos[1], path_pos[2]
+
+            screen_x = MappingMonitor.SCREEN_DIMS[0]/2 + (px-path_center[0])*path_to_screen_scaling
+            screen_y = MappingMonitor.SCREEN_DIMS[1]/2 + (py-path_center[1])*path_to_screen_scaling
+
+            pygame.draw.circle(self.screen, (255, 0, 0), (800-screen_x, screen_y), 0.01*path_to_screen_scaling)
+
         pygame.display.flip()
 
 class MeasurmentData:
