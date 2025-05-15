@@ -3,27 +3,94 @@ from rclpy.node import Node
 from transforms3d._gohlketransforms import euler_from_quaternion
 from sensor_msgs.msg import Range
 import numpy as np
-from math import pi
+from math import pi, cos, sin, degrees, ceil
 
 from rclpy.task import Future
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
+
+from collections import deque
 
 import sys
 
 ### ROOM MONITOR MODULE BEGIN
 import pygame
 
-class RoomMapper:
-    RM_DIMS = (0.215, 0.101) # robomaster dimensions (x,y)
+class OccupancyGrid:
+    # For occupancy grid we can use pygame texture and color coding for occupancy
+    # this already gives us functionality for drawing lines and shapes in the grid for connectivity
+    # the texture can also be converted into numpy array
+    def __init__(self, physical_size, physical_cell_size):
+        """"physical_size: tuple (width, height) size in meters"""
+        tex_w = int(ceil(physical_size[0] / physical_cell_size))
+        tex_h = int(ceil(physical_size[1] / physical_cell_size))
+        self.texture = pygame.Surface((tex_w, tex_h))
 
+        self.physical_size = physical_size
+        self.physical_cell_size = physical_cell_size
+        self.tex_size = (tex_w, tex_h)
+
+        # fill with random pixels for debug
+        # pixels = np.random.randint(0, 256, (tex_w, tex_h, 3), dtype=np.uint8)
+        # pygame.surfarray.blit_array(self.texture, np.transpose(pixels, (1, 0, 2)))
+
+    def room_to_grid_pos(self, room_pos):
+        """Converts room coordinates to grid coordinates."""
+        tex_x = int(round(room_pos[0]/self.physical_cell_size + self.tex_size[0]/2.0))
+        tex_y = int(round(room_pos[1]/self.physical_cell_size + self.tex_size[1]/2.0))
+        return (self.tex_size[0] - tex_x, tex_y) # TODO why does x has to be flipped?
+
+    def is_grid_pos_valid(self, grid_pos):
+        """Returns True if grid_pos is withing the grid dimensions."""
+        return grid_pos[0] >= 0 and grid_pos[1] >= 0 and grid_pos[0] < self.tex_size[0] and grid_pos[1] < self.tex_size[1]
+
+    def mark_wall(self, physical_position):
+        """Mark a wall in the grid, physical_position: tuple (x,y)"""
+        grid_pos = self.room_to_grid_pos(physical_position)
+        if not self.is_grid_pos_valid(grid_pos):
+            return
+        self.texture.set_at(grid_pos, (255, 0, 0))
+
+    def mark_path(self, physical_position):
+        """Mark a robot path in the grid, physical_position: tuple (x,y)"""
+        grid_pos = self.room_to_grid_pos(physical_position)
+        if not self.is_grid_pos_valid(grid_pos):
+            return
+        self.texture.set_at(grid_pos, (0, 255, 0))
+
+
+
+class RoomMapper:
+    RM_DIMS = (0.215, 0.101)  # robomaster dimensions (x,y)
+    RM_BACK_SENSOR_ANGLE = 30 # angle of the back sensors
+    RM_BACK_SENSOR_SHIFT = (0.107, -0.102) # pose shift of the left back sensor (x,y)
+    RM_BACK_LEFT_SENSOR_ID = 2
 
     """Create a map of the room based on the measurments from the robot."""
     def __init__(self, logger):
         self.map = None
         self.logger = logger
-        self.pose_list = []
+        self.rm_pose_list = deque(maxlen=16)      # circular buffer of positions robomaster travelled to
+        #self.scan_pose_list = []    # list of scanned positions
+        self.room_size = (6, 6)   # expected physical size of the room
+        self.occupancy_grid = OccupancyGrid(self.room_size, 0.025)
+        self.room_center = None    # refrence point for the center of the world
     
+    def scanned_pos(self, rm_pose, scan_dist):
+        """Calculates the position of the scanned object."""
+        rm_x, rm_y, rm_angle = rm_pose[0], rm_pose[1], rm_pose[2]
+
+        # scanner world coordinates
+        s_x = rm_x+ RoomMapper.RM_BACK_SENSOR_SHIFT[0]*cos(rm_angle) - RoomMapper.RM_BACK_SENSOR_SHIFT[1]*sin(rm_angle)
+        s_y = rm_y+ RoomMapper.RM_BACK_SENSOR_SHIFT[0]*sin(rm_angle) + RoomMapper.RM_BACK_SENSOR_SHIFT[1]*cos(rm_angle)
+        s_angle = rm_angle - RoomMapper.RM_BACK_SENSOR_ANGLE
+
+        # scanned point world coordinates
+        px = s_x + cos(s_angle)*scan_dist
+        py = s_y + sin(s_angle)*scan_dist
+
+        return (px, py)
+
     def update(self, measurment):
         """Update map based on measurment"""
         #self.logger.info(
@@ -32,10 +99,32 @@ class RoomMapper:
             #),
             #throttle_duration_sec=0.5,
         #)
-        self.pose_list.append(measurment.pose)
+        if measurment.pose is None:
+            return
+        
+        if self.room_center is None:
+            self.room_center = measurment.pose # first measurment, establish the refrence point
+
+        self.rm_pose_list.append(measurment.pose)
+
+
+        if None in measurment.sensor_data:
+            return
+
+        scanned_dist = measurment.sensor_data[RoomMapper.RM_BACK_LEFT_SENSOR_ID]
+
+        #scanned_dist = 0.3
+
+        #self.logger.info(f"scanned distance: {scanned_dist}")
+
+        if scanned_dist < 0.9:
+            #self.scan_pose_list.append(self.scanned_pos(measurment.pose, scanned_dist))
+            scan_pos = self.scanned_pos(measurment.pose, scanned_dist)
+            #self.occupancy_grid.mark_wall((scan_pos[0] - self.room_center[0], scan_pos[1]-self.room_center[1]))
+            self.occupancy_grid.mark_wall((scan_pos[0], scan_pos[1]))
 
 class MappingMonitor:
-    SCREEN_DIMS = (800, 800)
+    SCREEN_DIMS = (1000, 1000)
     """Draws room mapping to the screen."""
     def __init__(self):
         pygame.init()
@@ -43,35 +132,98 @@ class MappingMonitor:
         pygame.display.set_caption("Room live feedback")
         #self.world_to_screen_scaling = 200 # meters in world to pixels on the screen
 
+    def draw_occupancy_grid(self, occ_grid, screen_pos, screen_size):
+        """
+        screen_pos: tuple (x, y)
+        scren_size: tuple (width, height)
+        """
+        scaled = pygame.transform.scale(occ_grid.texture, screen_size)
+        self.screen.blit(scaled, screen_pos)
+
+    def draw_rm(self, screen_pos, angle, world_to_screen_scaling, color = (255, 0, 0), width = 2):
+        """Draws the robomaster."""
+        #pygame.draw.circle(self.screen, (255, 0, 0), (screen_pos[0], screen_pos[1]), 10)
+        corners = [
+            (-RoomMapper.RM_DIMS[0]/2,- RoomMapper.RM_DIMS[1]/2),
+            (RoomMapper.RM_DIMS[0]/2,- RoomMapper.RM_DIMS[1]/2),
+            (RoomMapper.RM_DIMS[0]/2,RoomMapper.RM_DIMS[1]/2),
+            (-RoomMapper.RM_DIMS[0]/2,RoomMapper.RM_DIMS[1]/2)
+        ]
+
+        corners = [(c[0]*world_to_screen_scaling, c[1]*world_to_screen_scaling) for c in corners]
+
+        angle = -angle # flip the angle
+
+        points = []
+        for corner in corners:
+            x = corner[0] * cos(angle) - corner[1] * sin(angle) + screen_pos[0]
+            y = corner[0] * sin(angle) + corner[1] * cos(angle) + screen_pos[1]
+            points.append((x,y))
+
+        pygame.draw.polygon(self.screen, color, points, width = width)
+
+
     def draw(self, room_mapper):
+        """Visualizes room mapper."""
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 exit()
         self.screen.fill((0, 0, 0))
 
-        if len(room_mapper.pose_list) < 2:
+        if len(room_mapper.rm_pose_list) < 2:
             return
 
-        path_max_x = max(pose[0] for pose in room_mapper.pose_list)
-        path_min_x = min(pose[0] for pose in room_mapper.pose_list)
-        path_max_y = max(pose[1] for pose in room_mapper.pose_list)
-        path_min_y = min(pose[1] for pose in room_mapper.pose_list)
 
-        path_size = (path_max_x-path_min_x, path_max_y-path_min_y)
-        path_center = ((path_max_x + path_min_x)/2.0, (path_max_y + path_min_y)/2.0)
+        #path_max_x = max(pose[0] for pose in room_mapper.rm_pose_list)
+        #path_min_x = min(pose[0] for pose in room_mapper.rm_pose_list)
+        #path_max_y = max(pose[1] for pose in room_mapper.rm_pose_list)
+        #path_min_y = min(pose[1] for pose in room_mapper.rm_pose_list)
 
-        path_size = (max(path_size[0], 1), max(path_size[1], 1))
+        #path_size = (path_max_x-path_min_x, path_max_y-path_min_y)
+        #path_center = ((path_max_x + path_min_x)/2.0, (path_max_y + path_min_y)/2.0)
 
-        path_to_screen_scaling = 0.8 * min(MappingMonitor.SCREEN_DIMS[0]/path_size[0], MappingMonitor.SCREEN_DIMS[1]/path_size[1])
+        #path_size = (max(path_size[0], 1), max(path_size[1], 1))
 
-        for path_pos in room_mapper.pose_list:
+
+        #path_to_screen_scaling = 0.5 * min(MappingMonitor.SCREEN_DIMS[0]/path_size[0], MappingMonitor.SCREEN_DIMS[1]/path_size[1])
+
+        world_to_screen_scaling = 0.9 * min(MappingMonitor.SCREEN_DIMS[0]/room_mapper.room_size[0], MappingMonitor.SCREEN_DIMS[1]/room_mapper.room_size[1])
+
+        self.draw_occupancy_grid(room_mapper.occupancy_grid, 
+        (MappingMonitor.SCREEN_DIMS[0]/2 + (room_mapper.room_center[0] -0.5*room_mapper.room_size[0]) * world_to_screen_scaling,
+         MappingMonitor.SCREEN_DIMS[1]/2 + (room_mapper.room_center[1] -0.5*room_mapper.room_size[1]) * world_to_screen_scaling), 
+        (room_mapper.room_size[0] * world_to_screen_scaling, room_mapper.room_size[1] * world_to_screen_scaling))
+
+
+
+        for i, path_pos in enumerate(room_mapper.rm_pose_list):
             px,py,theta = path_pos[0], path_pos[1], path_pos[2]
 
-            screen_x = MappingMonitor.SCREEN_DIMS[0]/2 + (px-path_center[0])*path_to_screen_scaling
-            screen_y = MappingMonitor.SCREEN_DIMS[1]/2 + (py-path_center[1])*path_to_screen_scaling
+            screen_x = MappingMonitor.SCREEN_DIMS[0]/2 + (px-room_mapper.room_center[0])*world_to_screen_scaling
+            screen_y = MappingMonitor.SCREEN_DIMS[1]/2 + (py-room_mapper.room_center[1])*world_to_screen_scaling
+        
+            l = len(room_mapper.rm_pose_list)
 
-            pygame.draw.circle(self.screen, (255, 0, 0), (800-screen_x, screen_y), 0.01*path_to_screen_scaling)
+            color = (255 * (i/l), 0, 0)
+            width = 2
+
+            if i == l-1:
+                color = (255, 255, 255)
+                width = 0
+
+            self.draw_rm((MappingMonitor.SCREEN_DIMS[0] - screen_x, screen_y), theta, world_to_screen_scaling, 
+            color = color, width=width)
+
+
+        #for path_pos in room_mapper.scan_pose_list:
+            #px,py = path_pos[0], path_pos[1]
+
+            #screen_x = MappingMonitor.SCREEN_DIMS[0]/2 + (px-room_mapper.room_center[0])*world_to_screen_scaling
+            #screen_y = MappingMonitor.SCREEN_DIMS[1]/2 + (py-room_mapper.room_center[1])*world_to_screen_scaling
+
+            #pygame.draw.circle(self.screen, (255, 255, 0), (MappingMonitor.SCREEN_DIMS[0] - screen_x, screen_y), 5)
+
 
         pygame.display.flip()
 
@@ -125,7 +277,7 @@ class ControllerNode(Node):
 
     def start(self):
         self.timer = self.create_timer(0.1, self.control_loop)
-        self.timer_mapper_loop = self.create_timer(0.1, self.mapping_loop)
+        self.timer_mapper_loop = self.create_timer(0.05, self.mapping_loop)
         self.timer_monitor_loop = self.create_timer(0.1, self.monitor_loop)
 
     def stop(self):
@@ -226,6 +378,7 @@ class ControllerNode(Node):
 
     def mapping_loop(self):
         """Updates the room mapper based on measurments from scanners."""
+
         self.room_mapper.update(
             MeasurmentData(pose = self.pose2d, sensor_data=self.ranges))
 
