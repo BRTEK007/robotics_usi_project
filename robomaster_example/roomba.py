@@ -46,18 +46,23 @@ class OccupancyGrid:
         """Returns True if grid_pos is withing the grid dimensions."""
         return grid_pos[0] >= 0 and grid_pos[1] >= 0 and grid_pos[0] < self.tex_size[0] and grid_pos[1] < self.tex_size[1]
 
-    def mark_wall(self, physical_position):
-        """Mark a wall in the grid, physical_position: tuple (x,y)"""
-        grid_pos = self.room_to_grid_pos(physical_position)
-        if not self.is_grid_pos_valid(grid_pos):
+    def mark_sensor_wall(self, scanner_pos, scanned_pos):
+        """Mark a wall in the grid"""
+        grid_scanned_pos = self.room_to_grid_pos(scanned_pos)
+        grid_scanner_pos = self.room_to_grid_pos(scanner_pos)
+        if not self.is_grid_pos_valid(grid_scanned_pos) or not self.is_grid_pos_valid(grid_scanner_pos):
             return
+
+        # draw the ray before the wall
+        pygame.draw.line(self.texture, (0, 255, 0), grid_scanner_pos, grid_scanned_pos)
+
+        # draw wall
+        self.texture.set_at(grid_scanned_pos, (255, 0, 0))
         
-        self.wall_scans_buffer.append(grid_pos)
-        
+        # draw the wall segment
+        self.wall_scans_buffer.append(grid_scanned_pos) 
         if len(self.wall_scans_buffer) >= 2 and pygame.math.Vector2(self.wall_scans_buffer[0]).distance_to(self.wall_scans_buffer[1]) <= 4:
             pygame.draw.line(self.texture, (255, 0, 0), self.wall_scans_buffer[0], self.wall_scans_buffer[1], 1)
-        else:
-            self.texture.set_at(grid_pos, (255, 0, 0))
 
 
     def mark_path(self, physical_position, physical_radius):
@@ -85,12 +90,15 @@ class RoomMapper:
         self.logger = logger
         self.rm_pose_list = deque(maxlen=1)      # circular buffer of positions robomaster travelled to
         #self.scan_pose_list = []    # list of scanned positions
-        self.room_size = (6, 6)   # expected physical size of the room
+        self.room_size = (5.5, 5.5)   # expected physical size of the room
         self.occupancy_grid = OccupancyGrid(self.room_size, 0.025)
         self.room_center = None    # refrence point for the center of the world
     
     def scanned_pos(self, rm_pose, sensor_pose, scan_dist):
-        """Calculates the position of the scanned object."""
+        """
+        Calculates the position of the scanned object.
+        Returns tuple scanner_pos, and scanned_pos ((x,y), (x,y))
+        """
         rm_x, rm_y, rm_angle = rm_pose[0], rm_pose[1], rm_pose[2]
         
         # scanner world coordinates
@@ -104,7 +112,7 @@ class RoomMapper:
         px = s_x + cos(s_angle)*scan_dist
         py = s_y + sin(s_angle)*scan_dist
 
-        return (px, py)
+        return ((s_x, s_y),(px, py))
 
     def update(self, measurment):
         """Update map based on measurment"""
@@ -128,8 +136,8 @@ class RoomMapper:
             scanned_dist = measurment.sensor_data[i]
 
             if scanned_dist != None and scanned_dist < 0.9:
-                scan_pos = self.scanned_pos(measurment.pose, RoomMapper.SENSOR_LOCAL_POSES[i], scanned_dist)
-                self.occupancy_grid.mark_wall((scan_pos[0], scan_pos[1]))
+                scanner_pos, scan_pos = self.scanned_pos(measurment.pose, RoomMapper.SENSOR_LOCAL_POSES[i], scanned_dist)
+                self.occupancy_grid.mark_sensor_wall(scanner_pos, scan_pos)
 
 class MappingMonitor:
     SCREEN_DIMS = (1000, 1000)
@@ -182,7 +190,7 @@ class MappingMonitor:
         if len(room_mapper.rm_pose_list) < 1:
             return
 
-        world_to_screen_scaling = 0.9 * min(MappingMonitor.SCREEN_DIMS[0]/room_mapper.room_size[0], MappingMonitor.SCREEN_DIMS[1]/room_mapper.room_size[1])
+        world_to_screen_scaling = min(MappingMonitor.SCREEN_DIMS[0]/room_mapper.room_size[0], MappingMonitor.SCREEN_DIMS[1]/room_mapper.room_size[1])
 
         self.draw_occupancy_grid(room_mapper.occupancy_grid, 
         (MappingMonitor.SCREEN_DIMS[0]/2 + (room_mapper.room_center[0] -0.5*room_mapper.room_size[0]) * world_to_screen_scaling,
