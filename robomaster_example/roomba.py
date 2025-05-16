@@ -69,12 +69,15 @@ class OccupancyGrid:
         pygame.draw.circle(self.texture, (0, 255, 0), grid_pos, int(round(physical_radius/self.physical_cell_size)))
 
 
-
 class RoomMapper:
     RM_DIMS = (0.215 * 1.1, 0.101 * 1.1)  # robomaster dimensions (x,y)
-    RM_BACK_SENSOR_ANGLE = 30 # angle of the back sensors
-    RM_BACK_SENSOR_SHIFT = (0.107, -0.102) # pose shift of the left back sensor (x,y)
-    RM_BACK_LEFT_SENSOR_ID = 2
+
+    SENSOR_LOCAL_POSES = [ # (x,y,angle)
+        (0.107, 0.102, -30), # back right
+        (-0.107, 0.102, 0), # front right
+        (0.107, -0.102, 30), # back left
+        (-0.107, -0.102, 0), # front left
+    ]
 
     """Create a map of the room based on the measurments from the robot."""
     def __init__(self, logger):
@@ -86,14 +89,14 @@ class RoomMapper:
         self.occupancy_grid = OccupancyGrid(self.room_size, 0.025)
         self.room_center = None    # refrence point for the center of the world
     
-    def scanned_pos(self, rm_pose, scan_dist):
+    def scanned_pos(self, rm_pose, sensor_pose, scan_dist):
         """Calculates the position of the scanned object."""
         rm_x, rm_y, rm_angle = rm_pose[0], rm_pose[1], rm_pose[2]
 
         # scanner world coordinates
-        s_x = rm_x+ RoomMapper.RM_BACK_SENSOR_SHIFT[0]*cos(rm_angle) - RoomMapper.RM_BACK_SENSOR_SHIFT[1]*sin(rm_angle)
-        s_y = rm_y+ RoomMapper.RM_BACK_SENSOR_SHIFT[0]*sin(rm_angle) + RoomMapper.RM_BACK_SENSOR_SHIFT[1]*cos(rm_angle)
-        s_angle = rm_angle - RoomMapper.RM_BACK_SENSOR_ANGLE
+        s_x = rm_x+ sensor_pose[0]*cos(rm_angle) - sensor_pose[1]*sin(rm_angle)
+        s_y = rm_y+ sensor_pose[0]*sin(rm_angle) + sensor_pose[1]*cos(rm_angle)
+        s_angle = rm_angle - sensor_pose[2]
 
         # scanned point world coordinates
         px = s_x + cos(s_angle)*scan_dist
@@ -121,7 +124,7 @@ class RoomMapper:
         if None in measurment.sensor_data:
             return
 
-        scanned_dist = measurment.sensor_data[RoomMapper.RM_BACK_LEFT_SENSOR_ID]
+        scanned_dist = measurment.sensor_data[2]
 
         #scanned_dist = 0.3
 
@@ -131,7 +134,7 @@ class RoomMapper:
 
         if scanned_dist < 0.9:
             #self.scan_pose_list.append(self.scanned_pos(measurment.pose, scanned_dist))
-            scan_pos = self.scanned_pos(measurment.pose, scanned_dist)
+            scan_pos = self.scanned_pos(measurment.pose, RoomMapper.SENSOR_LOCAL_POSES[2], scanned_dist)
             #self.occupancy_grid.mark_wall((scan_pos[0] - self.room_center[0], scan_pos[1]-self.room_center[1]))
             self.occupancy_grid.mark_wall((scan_pos[0], scan_pos[1]))
 
