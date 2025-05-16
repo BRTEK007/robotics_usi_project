@@ -3,7 +3,7 @@ from rclpy.node import Node
 from transforms3d._gohlketransforms import euler_from_quaternion
 from sensor_msgs.msg import Range
 import numpy as np
-from math import pi, cos, sin, degrees, ceil
+from math import pi, cos, sin, degrees, ceil, radians
 
 from rclpy.task import Future
 from geometry_msgs.msg import Twist
@@ -73,10 +73,10 @@ class RoomMapper:
     RM_DIMS = (0.215 * 1.1, 0.101 * 1.1)  # robomaster dimensions (x,y)
 
     SENSOR_LOCAL_POSES = [ # (x,y,angle)
-        (0.107, 0.102, -30), # back right
-        (-0.107, 0.102, 0), # front right
-        (0.107, -0.102, 30), # back left
-        (-0.107, -0.102, 0), # front left
+        (-0.107, -0.102, radians(-30)), # back right
+        (0.107, -0.102, 0), # front right
+        (-0.107, 0.102, radians(30)), # back left
+        (0.107, 0.102, 0), # front left
     ]
 
     """Create a map of the room based on the measurments from the robot."""
@@ -92,11 +92,13 @@ class RoomMapper:
     def scanned_pos(self, rm_pose, sensor_pose, scan_dist):
         """Calculates the position of the scanned object."""
         rm_x, rm_y, rm_angle = rm_pose[0], rm_pose[1], rm_pose[2]
-
+        
         # scanner world coordinates
         s_x = rm_x+ sensor_pose[0]*cos(rm_angle) - sensor_pose[1]*sin(rm_angle)
         s_y = rm_y+ sensor_pose[0]*sin(rm_angle) + sensor_pose[1]*cos(rm_angle)
-        s_angle = rm_angle - sensor_pose[2]
+        s_angle = rm_angle + sensor_pose[2]
+
+        print(s_angle)
 
         # scanned point world coordinates
         px = s_x + cos(s_angle)*scan_dist
@@ -120,23 +122,14 @@ class RoomMapper:
 
         self.rm_pose_list.append(measurment.pose)
 
-
-        if None in measurment.sensor_data:
-            return
-
-        scanned_dist = measurment.sensor_data[2]
-
-        #scanned_dist = 0.3
-
-        #self.logger.info(f"scanned distance: {scanned_dist}")
-
         self.occupancy_grid.mark_path(measurment.pose, min(RoomMapper.RM_DIMS[0], RoomMapper.RM_DIMS[1])/2.0)
+        
+        for i in range(0, 4):
+            scanned_dist = measurment.sensor_data[i]
 
-        if scanned_dist < 0.9:
-            #self.scan_pose_list.append(self.scanned_pos(measurment.pose, scanned_dist))
-            scan_pos = self.scanned_pos(measurment.pose, RoomMapper.SENSOR_LOCAL_POSES[2], scanned_dist)
-            #self.occupancy_grid.mark_wall((scan_pos[0] - self.room_center[0], scan_pos[1]-self.room_center[1]))
-            self.occupancy_grid.mark_wall((scan_pos[0], scan_pos[1]))
+            if scanned_dist != None and scanned_dist < 0.9:
+                scan_pos = self.scanned_pos(measurment.pose, RoomMapper.SENSOR_LOCAL_POSES[i], scanned_dist)
+                self.occupancy_grid.mark_wall((scan_pos[0], scan_pos[1]))
 
 class MappingMonitor:
     SCREEN_DIMS = (1000, 1000)
