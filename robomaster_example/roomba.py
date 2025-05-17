@@ -48,8 +48,8 @@ class OccupancyGrid:
         """Returns True if grid_pos is withing the grid dimensions."""
         return grid_pos[0] >= 0 and grid_pos[1] >= 0 and grid_pos[0] < self.tex_size[0] and grid_pos[1] < self.tex_size[1]
 
-    def mark_sensor_wall(self, scanner_pos, scanned_pos):
-        """Mark a wall in the grid"""
+    def mark_sensor_reading(self, scanner_pos, scanned_pos, hit_wall):
+        """Mark a wall in the grid, if sensor didn't hit the wall"""
         grid_scanned_pos = self.room_to_grid_pos(scanned_pos)
         grid_scanner_pos = self.room_to_grid_pos(scanner_pos)
         if not self.is_grid_pos_valid(grid_scanned_pos) or not self.is_grid_pos_valid(grid_scanner_pos):
@@ -58,6 +58,10 @@ class OccupancyGrid:
         # draw the ray before the wall
         pygame.draw.line(self.texture, (0, 255, 0), grid_scanner_pos, grid_scanned_pos)
 
+
+
+        if not hit_wall:
+            return
         # draw wall
         self.texture_walls.set_at(grid_scanned_pos, (255, 0, 0))
         
@@ -137,9 +141,18 @@ class RoomMapper:
         for i in range(0, 4):
             scanned_dist = measurment.sensor_data[i]
 
-            if scanned_dist != None and scanned_dist < 0.9:
+            if scanned_dist is None:
+                continue
+
+            SENSOR_RANGE = 0.9 # The range in which we trust the sensor to work correctly
+
+            if scanned_dist < SENSOR_RANGE: # hit a wall
                 scanner_pos, scan_pos = self.scanned_pos(measurment.pose, RoomMapper.SENSOR_LOCAL_POSES[i], scanned_dist)
-                self.occupancy_grid.mark_sensor_wall(scanner_pos, scan_pos)
+                self.occupancy_grid.mark_sensor_reading(scanner_pos, scan_pos, True)
+            else: # didn't hit a wall
+                scanner_pos, scan_pos = self.scanned_pos(measurment.pose, RoomMapper.SENSOR_LOCAL_POSES[i], SENSOR_RANGE)
+                self.occupancy_grid.mark_sensor_reading(scanner_pos, scan_pos, False)
+
 
 class MappingMonitor:
     SCREEN_DIMS = (1000, 1000)
