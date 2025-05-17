@@ -104,6 +104,8 @@ class OccupancyGrid:
 class RoomMapper:
     RM_DIMS = (0.215 * 1.1, 0.101 * 1.1)  # robomaster dimensions (x,y)
 
+    ROOM_SIZE = (12, 12) # room size in m, assuming robot starts in the center
+
     SENSOR_LOCAL_POSES = [ # (x,y,angle)
         (-0.107, -0.102, radians(-30)), # back right
         (0.107, -0.102, 0), # front right
@@ -117,7 +119,7 @@ class RoomMapper:
         self.logger = logger
         self.rm_pose_list = deque(maxlen=1)      # circular buffer of positions robomaster travelled to
         #self.scan_pose_list = []    # list of scanned positions
-        self.room_size = (5.5, 5.5)   # expected physical size of the room
+        self.room_size = RoomMapper.ROOM_SIZE   # expected physical size of the room
         self.occupancy_grid = OccupancyGrid(self.room_size, 0.025)
         self.room_center = None    # refrence point for the center of the world
     
