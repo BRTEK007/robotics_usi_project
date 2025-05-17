@@ -34,10 +34,6 @@ class OccupancyGrid:
         
         self.wall_scans_buffer = deque(maxlen=2)      # circular buffer of wall scans
 
-        # fill with random pixels for debug
-        # pixels = np.random.randint(0, 256, (tex_w, tex_h, 3), dtype=np.uint8)
-        # pygame.surfarray.blit_array(self.texture, np.transpose(pixels, (1, 0, 2)))
-
     def room_to_grid_pos(self, room_pos):
         """Converts room coordinates to grid coordinates."""
         tex_x = int(round(room_pos[0]/self.physical_cell_size + self.tex_size[0]/2.0))
@@ -57,8 +53,6 @@ class OccupancyGrid:
 
         # draw the ray before the wall
         pygame.draw.line(self.texture, (0, 255, 0), grid_scanner_pos, grid_scanned_pos)
-
-
 
         if not hit_wall:
             return
@@ -122,12 +116,6 @@ class RoomMapper:
 
     def update(self, measurment):
         """Update map based on measurment"""
-        #self.logger.info(
-            #"odometry: received pose (x: {:.2f}, y: {:.2f}, theta: {:.2f})".format(
-                #*measurment.pose
-            #),
-            #throttle_duration_sec=0.5,
-        #)
         if measurment.pose is None:
             return
         
