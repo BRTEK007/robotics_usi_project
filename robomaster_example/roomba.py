@@ -25,6 +25,8 @@ class OccupancyGrid:
         tex_w = int(ceil(physical_size[0] / physical_cell_size))
         tex_h = int(ceil(physical_size[1] / physical_cell_size))
         self.texture = pygame.Surface((tex_w, tex_h))
+        self.texture_walls = pygame.Surface((tex_w, tex_h), pygame.SRCALPHA)
+        self.texture_walls.fill((0,0,0,0))
 
         self.physical_size = physical_size
         self.physical_cell_size = physical_cell_size
@@ -57,12 +59,12 @@ class OccupancyGrid:
         pygame.draw.line(self.texture, (0, 255, 0), grid_scanner_pos, grid_scanned_pos)
 
         # draw wall
-        self.texture.set_at(grid_scanned_pos, (255, 0, 0))
+        self.texture_walls.set_at(grid_scanned_pos, (255, 0, 0))
         
         # draw the wall segment
         self.wall_scans_buffer.append(grid_scanned_pos) 
         if len(self.wall_scans_buffer) >= 2 and pygame.math.Vector2(self.wall_scans_buffer[0]).distance_to(self.wall_scans_buffer[1]) <= 4:
-            pygame.draw.line(self.texture, (255, 0, 0), self.wall_scans_buffer[0], self.wall_scans_buffer[1], 1)
+            pygame.draw.line(self.texture_walls, (255, 0, 0), self.wall_scans_buffer[0], self.wall_scans_buffer[1], 1)
 
 
     def mark_path(self, physical_position, physical_radius):
@@ -153,8 +155,10 @@ class MappingMonitor:
         screen_pos: tuple (x, y)
         scren_size: tuple (width, height)
         """
-        scaled = pygame.transform.scale(occ_grid.texture, screen_size)
-        self.screen.blit(scaled, screen_pos)
+        scaled_free = pygame.transform.scale(occ_grid.texture, screen_size)
+        self.screen.blit(scaled_free, screen_pos)
+        scaled_walls = pygame.transform.scale(occ_grid.texture_walls, screen_size)
+        self.screen.blit(scaled_walls, screen_pos)
 
     def draw_rm(self, screen_pos, angle, world_to_screen_scaling, color = (255, 0, 0), width = 2):
         """Draws the robomaster."""
