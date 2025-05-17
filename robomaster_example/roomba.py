@@ -16,6 +16,30 @@ import sys
 ### ROOM MONITOR MODULE BEGIN
 import pygame
 
+### HELPER FUNCTION FOR ROTATED SQUARE BEGIN
+
+def draw_rotated_rect(screen, screen_pos, angle, dimensions, color = (255, 0, 0), width = 2):
+    """Draws rotated square"""
+    
+    corners = [
+        (-dimensions[0]/2,-dimensions[1]/2),
+        (dimensions[0]/2,-dimensions[1]/2),
+        (dimensions[0]/2,dimensions[1]/2),
+        (-dimensions[0]/2,dimensions[1]/2)
+    ]
+
+    angle = -angle # flip the angle TODO why?
+
+    points = []
+    for corner in corners:
+        x = corner[0] * cos(angle) - corner[1] * sin(angle) + screen_pos[0]
+        y = corner[0] * sin(angle) + corner[1] * cos(angle) + screen_pos[1]
+        points.append((x,y))
+
+    pygame.draw.polygon(screen, color, points, width = width)
+
+### HELPER FUNCTION FOR ROTATED SQUARE END
+
 class OccupancyGrid:
     # For occupancy grid we can use pygame texture and color coding for occupancy
     # this already gives us functionality for drawing lines and shapes in the grid for connectivity
@@ -65,13 +89,16 @@ class OccupancyGrid:
             pygame.draw.line(self.texture_walls, (255, 0, 0), self.wall_scans_buffer[0], self.wall_scans_buffer[1], 1)
 
 
-    def mark_path(self, physical_position, physical_radius):
-        """Mark a robot path in the grid, physical_position: tuple (x,y)"""
-        grid_pos = self.room_to_grid_pos(physical_position)
+    def mark_rm_path(self, rm_pose):
+        """Mark a robot path in the grid"""
+        grid_pos = self.room_to_grid_pos((rm_pose[0], rm_pose[1]))
         if not self.is_grid_pos_valid(grid_pos):
             return
-        #self.texture.set_at(grid_pos, (0, 255, 0))
-        pygame.draw.circle(self.texture, (0, 255, 0), grid_pos, int(round(physical_radius/self.physical_cell_size)))
+        
+        draw_rotated_rect(self.texture, grid_pos, rm_pose[2], 
+                          (int(round(RoomMapper.RM_DIMS[0]/self.physical_cell_size)),int(round(RoomMapper.RM_DIMS[1]/self.physical_cell_size))),
+                          (0, 255, 0),
+                          0)
 
 
 class RoomMapper:
@@ -124,7 +151,9 @@ class RoomMapper:
 
         self.rm_pose_list.append(measurment.pose)
 
-        self.occupancy_grid.mark_path(measurment.pose, min(RoomMapper.RM_DIMS[0], RoomMapper.RM_DIMS[1])/2.0)
+        #self.logger.info(f"{measurment.pose[0]}, {measurment.pose[1]}, {measurment.pose[2]}")
+
+        self.occupancy_grid.mark_rm_path(measurment.pose)
         
         for i in range(0, 4):
             scanned_dist = measurment.sensor_data[i]
@@ -160,28 +189,6 @@ class MappingMonitor:
         self.screen.blit(scaled_free, screen_pos)
         scaled_walls = pygame.transform.scale(occ_grid.texture_walls, screen_size)
         self.screen.blit(scaled_walls, screen_pos)
-
-    def draw_rm(self, screen_pos, angle, world_to_screen_scaling, color = (255, 0, 0), width = 2):
-        """Draws the robomaster."""
-        #pygame.draw.circle(self.screen, (255, 0, 0), (screen_pos[0], screen_pos[1]), 10)
-        corners = [
-            (-RoomMapper.RM_DIMS[0]/2,- RoomMapper.RM_DIMS[1]/2),
-            (RoomMapper.RM_DIMS[0]/2,- RoomMapper.RM_DIMS[1]/2),
-            (RoomMapper.RM_DIMS[0]/2,RoomMapper.RM_DIMS[1]/2),
-            (-RoomMapper.RM_DIMS[0]/2,RoomMapper.RM_DIMS[1]/2)
-        ]
-
-        corners = [(c[0]*world_to_screen_scaling, c[1]*world_to_screen_scaling) for c in corners]
-
-        angle = -angle # flip the angle
-
-        points = []
-        for corner in corners:
-            x = corner[0] * cos(angle) - corner[1] * sin(angle) + screen_pos[0]
-            y = corner[0] * sin(angle) + corner[1] * cos(angle) + screen_pos[1]
-            points.append((x,y))
-
-        pygame.draw.polygon(self.screen, color, points, width = width)
 
 
     def draw(self, room_mapper):
@@ -219,8 +226,11 @@ class MappingMonitor:
                 color = (255, 255, 255)
                 width = 0
 
-            self.draw_rm((MappingMonitor.SCREEN_DIMS[0] - screen_x, screen_y), theta, world_to_screen_scaling, 
-            color = color, width=width)
+            draw_rotated_rect(self.screen, 
+                              (MappingMonitor.SCREEN_DIMS[0] - screen_x, screen_y),
+                            theta, 
+                            (RoomMapper.RM_DIMS[0] * world_to_screen_scaling, RoomMapper.RM_DIMS[1]*world_to_screen_scaling),
+                            color, width)
 
         pygame.display.flip()
 
