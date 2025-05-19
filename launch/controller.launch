@@ -28,5 +28,5 @@
        The `output` option configures the node to print to the terminal, to help with debugging.
        By default, nodes launched from a launch file print their output to a log file.
   -->
-  <node pkg="robomaster_example" exec="controller_node" namespace="$(var name)" output='screen' />
+  <node pkg="robotics_usi_project" exec="controller_node" namespace="$(var name)" output='screen' />
 </launch>

@@ -1,7 +1,7 @@
 from setuptools import setup
 from glob import glob
 
-package_name = 'robomaster_example'
+package_name = 'robotics_usi_project'
 
 setup(
     name=package_name,
@@ -25,7 +25,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'controller_node = robomaster_example.roomba:main'
+            'controller_node = robotics_usi_project.roomba:main'
         ],
     },
 )
