@@ -52,27 +52,27 @@ class OccupancyGrid:
         self.texture_walls = pygame.Surface((tex_w, tex_h), pygame.SRCALPHA)
         self.texture_walls.fill((0,0,0,0))
 
-        self.physical_size = physical_size
-        self.physical_cell_size = physical_cell_size
-        self.tex_size = (tex_w, tex_h)
+        self._physical_size = physical_size
+        self._physical_cell_size = physical_cell_size
+        self._tex_size = (tex_w, tex_h)
         
-        self.wall_scans_buffer = deque(maxlen=2)      # circular buffer of wall scans
+        self._wall_scans_buffer = deque(maxlen=2)      # circular buffer of wall scans
 
-    def room_to_grid_pos(self, room_pos):
+    def _room_to_grid_pos(self, room_pos):
         """Converts room coordinates to grid coordinates."""
-        tex_x = int(round(room_pos[0]/self.physical_cell_size + self.tex_size[0]/2.0))
-        tex_y = int(round(room_pos[1]/self.physical_cell_size + self.tex_size[1]/2.0))
-        return (self.tex_size[0] - tex_x, tex_y) # TODO why does x has to be flipped?
+        tex_x = int(round(room_pos[0]/self._physical_cell_size + self._tex_size[0]/2.0))
+        tex_y = int(round(room_pos[1]/self._physical_cell_size + self._tex_size[1]/2.0))
+        return (self._tex_size[0] - tex_x, tex_y) # TODO why does x has to be flipped?
 
-    def is_grid_pos_valid(self, grid_pos):
+    def _is_grid_pos_valid(self, grid_pos):
         """Returns True if grid_pos is withing the grid dimensions."""
-        return grid_pos[0] >= 0 and grid_pos[1] >= 0 and grid_pos[0] < self.tex_size[0] and grid_pos[1] < self.tex_size[1]
+        return grid_pos[0] >= 0 and grid_pos[1] >= 0 and grid_pos[0] < self._tex_size[0] and grid_pos[1] < self._tex_size[1]
 
     def mark_sensor_reading(self, scanner_pos, scanned_pos, hit_wall):
         """Mark a wall in the grid, if sensor didn't hit the wall"""
-        grid_scanned_pos = self.room_to_grid_pos(scanned_pos)
-        grid_scanner_pos = self.room_to_grid_pos(scanner_pos)
-        if not self.is_grid_pos_valid(grid_scanned_pos) or not self.is_grid_pos_valid(grid_scanner_pos):
+        grid_scanned_pos = self._room_to_grid_pos(scanned_pos)
+        grid_scanner_pos = self._room_to_grid_pos(scanner_pos)
+        if not self._is_grid_pos_valid(grid_scanned_pos) or not self._is_grid_pos_valid(grid_scanner_pos):
             return
 
         # draw the ray before the wall
@@ -84,19 +84,19 @@ class OccupancyGrid:
         self.texture_walls.set_at(grid_scanned_pos, (255, 0, 0))
         
         # draw the wall segment
-        self.wall_scans_buffer.append(grid_scanned_pos) 
-        if len(self.wall_scans_buffer) >= 2 and pygame.math.Vector2(self.wall_scans_buffer[0]).distance_to(self.wall_scans_buffer[1]) <= 4:
-            pygame.draw.line(self.texture_walls, (255, 0, 0), self.wall_scans_buffer[0], self.wall_scans_buffer[1], 1)
+        self._wall_scans_buffer.append(grid_scanned_pos) 
+        if len(self._wall_scans_buffer) >= 2 and pygame.math.Vector2(self._wall_scans_buffer[0]).distance_to(self._wall_scans_buffer[1]) <= 4:
+            pygame.draw.line(self.texture_walls, (255, 0, 0), self._wall_scans_buffer[0], self._wall_scans_buffer[1], 1)
 
 
     def mark_rm_path(self, rm_pose):
         """Mark a robot path in the grid"""
-        grid_pos = self.room_to_grid_pos((rm_pose[0], rm_pose[1]))
-        if not self.is_grid_pos_valid(grid_pos):
+        grid_pos = self._room_to_grid_pos((rm_pose[0], rm_pose[1]))
+        if not self._is_grid_pos_valid(grid_pos):
             return
         
         draw_rotated_rect(self.texture, grid_pos, rm_pose[2], 
-                          (int(round(RoomMapper.RM_DIMS[0]/self.physical_cell_size)),int(round(RoomMapper.RM_DIMS[1]/self.physical_cell_size))),
+                          (int(round(RoomMapper.RM_DIMS[0]/self._physical_cell_size)),int(round(RoomMapper.RM_DIMS[1]/self._physical_cell_size))),
                           (0, 255, 0),
                           0)
 
@@ -115,15 +115,13 @@ class RoomMapper:
 
     """Create a map of the room based on the measurments from the robot."""
     def __init__(self, logger):
-        self.map = None
-        self.logger = logger
+        self._logger = logger
         self.rm_pose_list = deque(maxlen=1)      # circular buffer of positions robomaster travelled to
-        #self.scan_pose_list = []    # list of scanned positions
         self.room_size = RoomMapper.ROOM_SIZE   # expected physical size of the room
         self.occupancy_grid = OccupancyGrid(self.room_size, 0.025)
         self.room_center = None    # refrence point for the center of the world
     
-    def scanned_pos(self, rm_pose, sensor_pose, scan_dist):
+    def _scanned_pos(self, rm_pose, sensor_pose, scan_dist):
         """
         Calculates the position of the scanned object.
         Returns tuple scanner_pos, and scanned_pos ((x,y), (x,y))
@@ -166,10 +164,10 @@ class RoomMapper:
             SENSOR_RANGE = 0.9 # The range in which we trust the sensor to work correctly
 
             if scanned_dist < SENSOR_RANGE: # hit a wall
-                scanner_pos, scan_pos = self.scanned_pos(measurment.pose, RoomMapper.SENSOR_LOCAL_POSES[i], scanned_dist)
+                scanner_pos, scan_pos = self._scanned_pos(measurment.pose, RoomMapper.SENSOR_LOCAL_POSES[i], scanned_dist)
                 self.occupancy_grid.mark_sensor_reading(scanner_pos, scan_pos, True)
             else: # didn't hit a wall
-                scanner_pos, scan_pos = self.scanned_pos(measurment.pose, RoomMapper.SENSOR_LOCAL_POSES[i], SENSOR_RANGE)
+                scanner_pos, scan_pos = self._scanned_pos(measurment.pose, RoomMapper.SENSOR_LOCAL_POSES[i], SENSOR_RANGE)
                 self.occupancy_grid.mark_sensor_reading(scanner_pos, scan_pos, False)
 
 
@@ -178,19 +176,19 @@ class MappingMonitor:
     """Draws room mapping to the screen."""
     def __init__(self):
         pygame.init()
-        self.screen = pygame.display.set_mode(MappingMonitor.SCREEN_DIMS)
+        self._screen = pygame.display.set_mode(MappingMonitor.SCREEN_DIMS)
         pygame.display.set_caption("Room live feedback")
         #self.world_to_screen_scaling = 200 # meters in world to pixels on the screen
 
-    def draw_occupancy_grid(self, occ_grid, screen_pos, screen_size):
+    def _draw_occupancy_grid(self, occ_grid, screen_pos, screen_size):
         """
         screen_pos: tuple (x, y)
         scren_size: tuple (width, height)
         """
         scaled_free = pygame.transform.scale(occ_grid.texture, screen_size)
-        self.screen.blit(scaled_free, screen_pos)
+        self._screen.blit(scaled_free, screen_pos)
         scaled_walls = pygame.transform.scale(occ_grid.texture_walls, screen_size)
-        self.screen.blit(scaled_walls, screen_pos)
+        self._screen.blit(scaled_walls, screen_pos)
 
 
     def draw(self, room_mapper):
@@ -199,14 +197,14 @@ class MappingMonitor:
             if event.type == pygame.QUIT:
                 pygame.quit()
                 exit()
-        self.screen.fill((0, 0, 0))
+        self._screen.fill((0, 0, 0))
 
         if len(room_mapper.rm_pose_list) < 1:
             return
 
         world_to_screen_scaling = min(MappingMonitor.SCREEN_DIMS[0]/room_mapper.room_size[0], MappingMonitor.SCREEN_DIMS[1]/room_mapper.room_size[1])
 
-        self.draw_occupancy_grid(room_mapper.occupancy_grid, 
+        self._draw_occupancy_grid(room_mapper.occupancy_grid, 
         (MappingMonitor.SCREEN_DIMS[0]/2 + (room_mapper.room_center[0] -0.5*room_mapper.room_size[0]) * world_to_screen_scaling,
          MappingMonitor.SCREEN_DIMS[1]/2 + (room_mapper.room_center[1] -0.5*room_mapper.room_size[1]) * world_to_screen_scaling), 
         (room_mapper.room_size[0] * world_to_screen_scaling, room_mapper.room_size[1] * world_to_screen_scaling))
@@ -228,7 +226,7 @@ class MappingMonitor:
                 color = (255, 255, 255)
                 width = 0
 
-            draw_rotated_rect(self.screen, 
+            draw_rotated_rect(self._screen, 
                               (MappingMonitor.SCREEN_DIMS[0] - screen_x, screen_y),
                             theta, 
                             (RoomMapper.RM_DIMS[0] * world_to_screen_scaling, RoomMapper.RM_DIMS[1]*world_to_screen_scaling),
