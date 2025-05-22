@@ -25,6 +25,7 @@ class RobotState(Enum):
     PATH_FOLLOWING = 6
     ROTATE_360 = 7
     RETURN_TO_BASE = 8
+    SCAN_FORWARD = 9
 
 
 class ControllerNode(Node):
@@ -57,6 +58,8 @@ class ControllerNode(Node):
         self.avoidance_threshold = 0.35
         self.forward_speed = 0.45
         self.angular_speed = 0.5
+        self.last_angle = None
+        self.scan_index = 0
         initial_angle = self.pose2d[2] % (2 * pi)
         self.target_angle = (initial_angle + 2 * pi - 0.05) % (2 * pi)
         self.state = RobotState.ROTATE_360
@@ -213,7 +216,7 @@ class ControllerNode(Node):
         )
         self.get_logger().info("Path: " + str(self.path_to_follow))
         self.stop()
-        np.save("arr1.npy", occupancy_grid)
+        np.save("arr2.npy", occupancy_grid)
 
     def monitor_loop(self):
         """Calls the mapping monitor to draw to the screen."""
@@ -494,7 +497,8 @@ class ControllerNode(Node):
                     self.done_future.set_result(True)
 
                 self.get_logger().info("Scanning 360.")
-                self.state = RobotState.ROTATE_360
+                self.last_angle = self.pose2d[2]
+                self.state = RobotState.SCAN_FORWARD
 
             # we need to adjust the coppelia coordinates no the path matrix
 
@@ -590,6 +594,38 @@ class ControllerNode(Node):
             self.current_target_index = 0
             self.update_goal_angle()
             self.returned_to_base = True
+        elif self.state == RobotState.SCAN_FORWARD:
+            if self.scan_index == 0:
+                if self.rotate_with_angles(
+                    self.pose2d[2],
+                    self.last_angle - pi / 3,
+                    constant=2,
+                    tolerance=0.03,
+                ):
+                    self.scan_index += 1
+            elif self.scan_index == 1:
+                if self.rotate_with_angles(
+                    self.pose2d[2],
+                    self.last_angle + pi / 3,
+                    constant=2,
+                    tolerance=0.03,
+                ):
+                    self.scan_index += 1
+            else:
+                if self.rotate_with_angles(
+                    self.pose2d[2], self.last_angle, constant=2, tolerance=0.03
+                ):
+                    self.scan_index = 0
+                    self.stop()
+                    self.get_logger().info("Forward scan completed")
+                    self.update_path()
+                    if self.path_to_follow:
+                        self.state = RobotState.PATH_FOLLOWING
+                        self.current_target_index = 0
+                        self.update_goal_angle()
+                    else:
+                        self.get_logger().info("Total scan completed")
+                        self.state = RobotState.RETURN_TO_BASE
 
 
 def main():
