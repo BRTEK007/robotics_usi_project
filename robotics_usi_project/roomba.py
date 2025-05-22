@@ -196,9 +196,11 @@ class ControllerNode(Node):
 
     def update_path(self):
         """Updates the path towards the nearest explored cell near to an unexplored one."""
-        cell_size = max(RoomMapper.RM_DIMS)
+        robot_large_side = max(RoomMapper.RM_DIMS)
         occupancy_grid = self.room_mapper.occupancy_grid.to_numpy_array().T
-        self.path_planner = PathPlanner(occupancy_grid, RoomMapper.ROOM_SIZE, cell_size)
+        self.path_planner = PathPlanner(
+            occupancy_grid, RoomMapper.ROOM_SIZE, robot_large_side
+        )
         path = self.path_planner.compute_bfs_path_to_nearest_frontier(
             start_point=self.pose2d[:2]
         )
@@ -496,7 +498,7 @@ class ControllerNode(Node):
 
             # we need to adjust the coppelia coordinates no the path matrix
 
-            self.path_tolerance = 0.1
+            self.path_tolerance = 0.05
 
             # invalid data
             if not self.path_to_follow or self.pose2d is None:
@@ -565,14 +567,14 @@ class ControllerNode(Node):
             else:
                 cmd_vel = Twist()
                 cmd_vel.linear.x = 0.0
-                cmd_vel.angular.z = np.clip(1.0 * angle_diff, -1.2, 1.2)
+                cmd_vel.angular.z = np.clip(1.0 * angle_diff, -1.5, 1.5)
                 self.vel_publisher.publish(cmd_vel)
 
         elif self.state == RobotState.RETURN_TO_BASE:
-            cell_size = max(RoomMapper.RM_DIMS)
+            robot_large_side = max(RoomMapper.RM_DIMS)
             occupancy_grid = self.room_mapper.occupancy_grid.to_numpy_array().T
             self.path_planner = PathPlanner(
-                occupancy_grid, RoomMapper.ROOM_SIZE, cell_size
+                occupancy_grid, RoomMapper.ROOM_SIZE, robot_large_side
             )
             path = self.path_planner.compute_a_star_path(
                 start=self.path_planner._calculate_cell_from_physical(self.pose2d[:2]),

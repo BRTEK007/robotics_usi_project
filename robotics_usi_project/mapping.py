@@ -140,9 +140,9 @@ class OccupancyGrid:
 
 
 class RoomMapper:
-    RM_DIMS = (0.35, 0.18)  # robomaster dimensions (x,y)
+    RM_DIMS = (0.44, 0.22)  # robomaster dimensions (x,y)
 
-    ROOM_SIZE = (5, 5)  # room size in m, assuming robot starts in the center
+    ROOM_SIZE = (8, 8)  # room size in m, assuming robot starts in the center
 
     SENSOR_LOCAL_POSES = [  # (x,y,angle)
         (-0.107, -0.102, radians(-30)),  # back right

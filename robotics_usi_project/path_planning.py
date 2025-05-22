@@ -1,4 +1,5 @@
 import numpy as np
+import cv2
 import heapq
 import matplotlib.pyplot as plt
 from collections import deque
@@ -247,10 +248,24 @@ class GridDecomposer:
 
 
 class PathPlanner:
-    def __init__(self, occupancy_grid, room_size, cell_size):
+
+    def __init__(self, occupancy_grid, room_size, robot_large_side):
+        cell_size = (robot_large_side + 0.2) / 8
         self.room_size = room_size
         self.cell_size = cell_size
         self.grid = self._downsample_to_robot_grid(occupancy_grid)
+        self.grid = self._dilatate_walls_and_unknowns(4)
+
+    def _dilatate_walls_and_unknowns(self, num_dilatation_cells):
+        mask = np.isin(self.grid, [0, 2]).astype(np.uint8)
+        kernel = np.ones((1 + num_dilatation_cells, 1 + num_dilatation_cells), np.uint8)
+        dilated_mask = cv2.dilate(mask, kernel, iterations=1)
+        dilated_arr = self.grid.copy()
+        dilated_arr[(dilated_mask == 1) & (self.grid == 1)] = 0
+        mask_2s = (self.grid == 2).astype(np.uint8)
+        dilated_2s = cv2.dilate(mask_2s, kernel, iterations=1)
+        dilated_arr[(dilated_2s == 1)] = 2
+        return dilated_arr
 
     def _downsample_to_robot_grid(self, occupancy_grid):
         """
@@ -449,19 +464,11 @@ class FourNeighborPath:
 
         """
 
-        # print(".---------.")
-        # print("physical start")
-        # print(rm_physical_start)
         (y, x) = pathPlanner._calculate_cell_from_physical(rm_physical_start)
-        # print("y, x")
-        # print(y, x)
 
         x0_phys = -((x + 0.5) * pathPlanner.cell_size) + pathPlanner.room_size[0] / 2
         y0_phys = ((y + 0.5) * pathPlanner.cell_size) - pathPlanner.room_size[1] / 2
-        # print(pathPlanner._calculate_cell_from_physical((x0_phys, y0_phys)))
 
-        # print("updated start")
-        # print(x0_phys, y0_phys)
         y0_grid, x0_grid = self.path[0]
 
         physical_path = []
