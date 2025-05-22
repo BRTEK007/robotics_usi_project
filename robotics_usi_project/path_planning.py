@@ -12,15 +12,6 @@ class Cell:
         self.min_y = self.max_y = self.min_x = self.max_x = None
         self.update_bounds(pixels)
 
-    @property
-    def corners(self):
-        return [
-            (self.min_y, self.min_x),
-            (self.min_y, self.max_x),
-            (self.max_y, self.min_x),
-            (self.max_y, self.max_x),
-        ]
-
     def update_bounds(self, pixels):
         ys, xs = zip(*pixels)
         self.min_y = min(ys) if self.min_y is None else min(self.min_y, *ys)
@@ -31,7 +22,7 @@ class Cell:
     def contains(self, y, x):
         return self.min_y <= y <= self.max_y and self.min_x <= x <= self.max_x
 
-    def sweep_path(self, start=None, goal=None):
+    def sweep_path(self, a_start_func, start=None, goal=None):
         """Generates a sweep path that covers all pixels in the cell, moving toward the goal."""
         pixels = {
             (y, x)
@@ -69,11 +60,9 @@ class Cell:
                     key=lambda p: (abs(p[0] - y) + abs(p[1] - x), -distances[p])
                 )
                 target = unvisited[0]
-                sub_path = a_star_grid(
-                    grid=None,
+                sub_path = a_start_func(
                     start=current,
                     goal=target,
-                    is_walkable=is_walkable_in_grid,
                 )
                 if not sub_path:
                     break
@@ -99,6 +88,28 @@ class Cell:
 
         return path[1:]
 
+    def find_goal_towards_next_cell(self, cell_b):
+        """Finds the pixel in cell that borders the adjacent cell B for transition."""
+        if cell_b.min_x == self.max_x + 1 or cell_b.max_x == self.min_x - 1:
+            y_start = max(self.min_y, cell_b.min_y)
+            goal_x = self.max_x if cell_b.min_x == self.max_x + 1 else self.min_x
+            return (y_start, goal_x)
+        assert False, "Unsupported cell adjacency"
+
+    def find_nearest_goal_in_cell(self, current_pixel):
+        """Finds the closest boundary pixel in the cell from the current position."""
+        goal_x = (
+            self.min_x
+            if abs(current_pixel[1] - self.min_x) < abs(current_pixel[1] - self.max_x)
+            else self.max_x
+        )
+        goal_y = (
+            self.min_y
+            if abs(current_pixel[0] - self.min_y) < abs(current_pixel[0] - self.max_y)
+            else self.max_y
+        )
+        return goal_y, goal_x
+
 
 class GridDecomposer:
     """Decomposes a 2D binary grid into non-overlapping vertical cells of walkable regions."""
@@ -110,6 +121,7 @@ class GridDecomposer:
         self.cell_map = -np.ones_like(grid, dtype=int)
         self.cells = {}
         self._decompose()
+        self.adjacency = self._build_adjacency()
 
     def _decompose(self):
         """Performs vertical decomposition of the grid into cells of limited height."""
@@ -148,7 +160,7 @@ class GridDecomposer:
                     y += 1
             prev_segments = current_segments
 
-    def build_adjacency(self):
+    def _build_adjacency(self):
         """Builds an adjacency map between neighboring cells."""
         adjacency = {cid: set() for cid in self.cells}
         for y in range(self.height):
@@ -163,6 +175,14 @@ class GridDecomposer:
                         if nid >= 0 and nid != cid:
                             adjacency[cid].add(nid)
         return {cid: sorted(neighs) for cid, neighs in adjacency.items()}
+
+    def get_cell_id_from_point(self, point):
+        """Returns the cell ID that the point (y, x) belongs to."""
+        y, x = point
+        if 0 <= y < self.height and 0 <= x < self.width:
+            return self.cell_map[y, x]
+        else:
+            raise ValueError(f"Point {point} is out of bounds.")
 
     def order_cells_by_gradient(self, start_cell_id, distances):
         """Orders cells by moving through neighbors with highest distance from the start."""
@@ -213,181 +233,245 @@ class GridDecomposer:
 
         return max(best_paths, key=lambda p: distances[p[-1]]) if best_paths else None
 
-
-def compute_cell_distances(adjacency, start_id):
-    """Computes shortest distances from a start cell to all others using BFS."""
-    distances = {start_id: 0}
-    queue = deque([start_id])
-    while queue:
-        current = queue.popleft()
-        for neighbor in adjacency.get(current, []):
-            if neighbor not in distances:
-                distances[neighbor] = distances[current] + 1
-                queue.append(neighbor)
-    return distances
-
-
-def find_goal_toward_next_cell(cell_a, cell_b):
-    """Finds the pixel in cell A that borders the adjacent cell B for transition."""
-    if cell_b.min_x == cell_a.max_x + 1 or cell_b.max_x == cell_a.min_x - 1:
-        y_start = max(cell_a.min_y, cell_b.min_y)
-        goal_x = cell_a.max_x if cell_b.min_x == cell_a.max_x + 1 else cell_a.min_x
-        return (y_start, goal_x)
-    assert False, "Unsupported cell adjacency"
+    def compute_cell_distances(self, start_id):
+        """Computes shortest distances from a start cell to all others using BFS."""
+        distances = {start_id: 0}
+        queue = deque([start_id])
+        while queue:
+            current = queue.popleft()
+            for neighbor in self.adjacency.get(current, []):
+                if neighbor not in distances:
+                    distances[neighbor] = distances[current] + 1
+                    queue.append(neighbor)
+        return distances
 
 
-def find_nearest_goal_in_cell(current_pixel, goal_cell):
-    """Finds the closest boundary pixel in the goal cell from the current position."""
-    goal_x = (
-        goal_cell.min_x
-        if abs(current_pixel[1] - goal_cell.min_x)
-        < abs(current_pixel[1] - goal_cell.max_x)
-        else goal_cell.max_x
-    )
-    goal_y = (
-        goal_cell.min_y
-        if abs(current_pixel[0] - goal_cell.min_y)
-        < abs(current_pixel[0] - goal_cell.max_y)
-        else goal_cell.max_y
-    )
-    return goal_y, goal_x
+class PathPlanner:
+    def __init__(self, occupancy_grid, room_size, cell_size):
+        self.room_size = room_size
+        self.cell_size = cell_size
+        self.grid = self._downsample_to_robot_grid(occupancy_grid)
 
+    def _downsample_to_robot_grid(self, occupancy_grid):
+        """
+        Downsamples a high-resolution map to a grid where each cell corresponds to the robot's size.
+        Uses physical position mapping to avoid precision loss. Priority: 2 > 0 > 1.
+        """
+        target_cols = int(self.room_size[0] / self.cell_size)
+        target_rows = int(self.room_size[1] / self.cell_size)
 
-def is_walkable_in_grid(grid, pixel):
-    """Checks if a pixel is within bounds and walkable (i.e., grid value is 0)."""
-    y, x = pixel
-    return 0 <= y < 20 and 0 <= x < 20 and grid[y, x] == 0
+        result = np.zeros((target_rows, target_cols), dtype=int)
 
+        occupancy_cell_size = self.room_size[0] / occupancy_grid.shape[0]
 
-def a_star_grid(grid, start, goal, is_walkable):
-    """Runs A* pathfinding on the grid from start to goal using the walkability function."""
-    frontier = [(0, start)]
-    came_from = {start: None}
-    cost_so_far = {start: 0}
+        for i in range(target_rows):
+            for j in range(target_cols):
+                top_left_x = int((i * self.cell_size) / occupancy_cell_size)
+                top_left_y = int((j * self.cell_size) / occupancy_cell_size)
+                bottom_right_x = int(((i + 1) * self.cell_size) / occupancy_cell_size)
+                bottom_right_y = int(((j + 1) * self.cell_size) / occupancy_cell_size)
 
-    def heuristic(a, b):
-        return abs(a[0] - b[0]) + abs(a[1] - b[1])
+                block = occupancy_grid[
+                    top_left_x:bottom_right_x, top_left_y:bottom_right_y
+                ]
 
-    while frontier:
-        _, current = heapq.heappop(frontier)
-        if current == goal:
-            path = []
-            while current is not None:
-                path.append(current)
-                current = came_from[current]
-            return list(reversed(path))[1:]
+                # print("block size: " + str(block.size))
+                if np.sum(block == 2) > block.size * 0.015:
+                    result[i, j] = 2
+                elif np.sum(block == 1) > block.size * 0.75:
+                    result[i, j] = 1
 
-        for dy, dx in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-            next_cell = (current[0] + dy, current[1] + dx)
-            if not is_walkable(grid, next_cell):
-                continue
-            new_cost = cost_so_far[current] + 1
-            if next_cell not in cost_so_far or new_cost < cost_so_far[next_cell]:
-                cost_so_far[next_cell] = new_cost
-                came_from[next_cell] = current
-                heapq.heappush(
-                    frontier, (new_cost + heuristic(goal, next_cell), next_cell)
+        return result
+
+    def _calculate_cell_from_physical(self, rm_physical):
+        """Calculates the cell position of a real point"""
+        x = int((-rm_physical[0] + self.room_size[0] / 2) / self.cell_size)
+        y = int((rm_physical[1] + self.room_size[1] / 2) / self.cell_size)
+        return (y, x)
+
+    def _is_valid(self, pixel):
+        """Checks if a pixel is within bounds and walkable (i.e., grid value is 0)."""
+        height, width = self.grid.shape
+        y, x = pixel
+        return 0 <= y < height and 0 <= x < width
+
+    def compute_a_star_path(self, start, goal):
+        """Runs A* pathfinding on the grid from start to goal using the walkability function."""
+        frontier = [(0, start)]
+        came_from = {start: None}
+        cost_so_far = {start: 0}
+
+        def heuristic(a, b):
+            return abs(a[0] - b[0]) + abs(a[1] - b[1])
+
+        while frontier:
+            _, current = heapq.heappop(frontier)
+            if current == goal:
+                path = []
+                while current is not None:
+                    path.append(current)
+                    current = came_from[current]
+                return list(reversed(path))
+            for dy, dx in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                next_cell = (current[0] + dy, current[1] + dx)
+                if (
+                    not self._is_valid(next_cell)
+                    or self.grid[next_cell[0], next_cell[1]] == 2
+                ):
+                    continue
+                new_cost = cost_so_far[current] + 1
+                if next_cell not in cost_so_far or new_cost < cost_so_far[next_cell]:
+                    cost_so_far[next_cell] = new_cost
+                    came_from[next_cell] = current
+                    heapq.heappush(
+                        frontier, (new_cost + heuristic(goal, next_cell), next_cell)
+                    )
+        assert False, "A* path not found"
+
+    def compute_bfs_path_to_nearest_frontier(self, start_point):
+        """
+        Performs BFS from the start position to find the closest free cell (1)
+        that is adjacent to at least one unknown cell (0). Avoids walls (2).
+
+        """
+        start_cell = self._calculate_cell_from_physical(start_point)
+        visited = np.zeros_like(self.grid, dtype=bool)
+        parent = dict()
+
+        queue = deque()
+        queue.append(start_cell)
+        visited[start_cell] = True
+
+        directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+
+        while queue:
+            y, x = queue.popleft()
+
+            if self.grid[y, x] == 1:
+                for dy, dx in directions:
+                    ny, nx = y + dy, x + dx
+                    if self._is_valid((ny, nx)) and self.grid[ny, nx] == 0:
+                        path = [(y, x)]
+                        while (y, x) != start_cell:
+                            y, x = parent[(y, x)]
+                            path.append((y, x))
+                        path.reverse()
+                        return path
+
+            for dy, dx in directions:
+                ny, nx = y + dy, x + dx
+                if (
+                    self._is_valid((ny, nx))
+                    and not visited[ny, nx]
+                    and self.grid[ny, nx] != 2
+                ):
+                    visited[ny, nx] = True
+                    parent[(ny, nx)] = (y, x)
+                    queue.append((ny, nx))
+        return None
+
+    def plan_full_coverage_path(self, start):
+
+        decomposer = GridDecomposer(self.grid)
+
+        start = (19, 0)
+        cell_id = decomposer.get_cell_id_from_point(start)
+        distances = decomposer.compute_cell_distances(cell_id)
+        order = decomposer.order_cells_by_gradient(
+            start_cell_id=cell_id, distances=distances
+        )
+        order.append(cell_id)
+
+        path = []
+        visited = np.zeros(len(decomposer.cells))
+        pos = start
+
+        for i in range(len(order) - 1):
+            cell_idx = order[i]
+            if not visited[cell_idx]:
+                visited[cell_idx] = 1
+                goal = decomposer.cells[cell_idx].find_goal_towards_next_cell(
+                    decomposer.cells[order[i + 1]]
                 )
-    assert False, "A* path not found"
-
-
-def visualize_grid_with_cells_and_path(
-    grid, cell_map, path=None, title="Grid with Cells and Sweep Path"
-):
-    """Visualizes the grid, cell decomposition, and an optional sweep path."""
-    height, width = grid.shape
-    fig, ax = plt.subplots(figsize=(8, 8))
-    unique_ids = np.unique(cell_map[cell_map >= 0])
-    colors = plt.cm.tab20(np.linspace(0, 1, len(unique_ids)))
-    color_map = {cid: colors[i % len(colors)] for i, cid in enumerate(unique_ids)}
-
-    for y in range(height):
-        for x in range(width):
-            facecolor = (
-                "black" if grid[y, x] == 1 else color_map.get(cell_map[y, x], "white")
-            )
-            rect = plt.Rectangle(
-                (x, height - y - 1),
-                1,
-                1,
-                facecolor=facecolor,
-                edgecolor="gray",
-                linewidth=0.5,
-            )
-            ax.add_patch(rect)
-
-    if path:
-        for i in range(len(path) - 1):
-            y1, x1 = path[i]
-            y2, x2 = path[i + 1]
-            dx, dy = x2 - x1, y1 - y2
-            ax.arrow(
-                x1 + 0.5,
-                height - y1 - 0.5,
-                dx * 0.8,
-                dy * 0.8,
-                head_width=0.3,
-                head_length=0.3,
-                fc="white",
-                ec="white",
-                zorder=10,
-            )
-
-    ax.set_xlim(0, width)
-    ax.set_ylim(0, height)
-    ax.set_xticks(np.arange(0, width + 1, 1))
-    ax.set_yticks(np.arange(0, height + 1, 1))
-    ax.set_xticklabels([])
-    ax.set_yticklabels([])
-    ax.set_title(title)
-    ax.set_aspect("equal")
-    ax.grid(True, which="both", color="lightgray", linewidth=0.5)
-    plt.show()
-
-
-# Example usage
-example_grid = np.zeros((20, 20))
-example_grid[4:6, 3:6] = 1
-example_grid[16:19, 14:15] = 1
-example_grid[16:17, 15:16] = 1
-example_grid[16:18, 12:14] = 1
-example_grid[4:7, 12:16] = 1
-
-decomposer = GridDecomposer(example_grid)
-decomposer.adjacency = decomposer.build_adjacency()
-
-distances = compute_cell_distances(decomposer.adjacency, 0)
-order = decomposer.order_cells_by_gradient(start_cell_id=0, distances=distances)
-order.append(0)
-
-path = []
-visited = np.zeros(len(decomposer.cells))
-start = (19, 0)
-
-for i in range(len(order) - 1):
-    cell_idx = order[i]
-    if not visited[cell_idx]:
-        visited[cell_idx] = 1
-        goal = find_goal_toward_next_cell(
-            decomposer.cells[cell_idx], decomposer.cells[order[i + 1]]
-        )
-        cell_path = decomposer.cells[cell_idx].sweep_path(start=start, goal=goal)
-        path.extend(cell_path)
-        current = path[-1]
-        start = (
-            find_nearest_goal_in_cell(current, decomposer.cells[order[i + 1]])
-            if i < len(order) - 2
-            else (19, 0)
-        )
-        path.extend(a_star_grid(example_grid, current, start, is_walkable_in_grid))
-    else:
-        for j in range(i + 1, len(order) - 1):
-            if not visited[order[j]]:
+                cell_path = decomposer.cells[cell_idx].sweep_path(
+                    self.compute_a_star_path, start=pos, goal=goal
+                )
+                path.extend(cell_path)
                 current = path[-1]
-                start = find_nearest_goal_in_cell(current, decomposer.cells[order[j]])
-                path.extend(
-                    a_star_grid(example_grid, current, start, is_walkable_in_grid)
+                pos = (
+                    decomposer.cells[order[i + 1]].find_nearest_goal_in_cell(current)
+                    if i < len(order) - 2
+                    else (19, 0)
                 )
-                break
+                path.extend(self.compute_a_star_path(current, pos))
+            else:
+                for j in range(i + 1, len(order) - 1):
+                    if not visited[order[j]]:
+                        current = path[-1]
+                        pos = decomposer.cells[order[j]].find_nearest_goal_in_cell(
+                            current
+                        )
+                        path.extend(self.compute_a_star_path(current, pos))
+                        break
+        return path
 
-visualize_grid_with_cells_and_path(example_grid, decomposer.cell_map, path)
+
+class FourNeighborPath:
+    def __init__(self, path):
+        self.len = len(path)
+        self.path = self._simplify_path(path)
+
+    def _simplify_path(self, path):
+        """
+        Given a list of (y, x) coordinates representing a path moving
+        in 4-neighbor steps, returns a simplified path containing only:
+        The start point, turns and the end point.
+        """
+        if len(path) < 2:
+            return path[:]
+
+        simplified = [path[0]]
+        prev_dir = (path[1][0] - path[0][0], path[1][1] - path[0][1])
+
+        for i in range(2, len(path)):
+            curr_dir = (path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1])
+            if curr_dir != prev_dir:
+                simplified.append(path[i - 1])
+                prev_dir = curr_dir
+
+        simplified.append(path[-1])
+        return simplified
+
+    def obtain_physical_path(self, pathPlanner, rm_physical_start):
+        """
+        Convert simplified path grid coordinates (y,x) to physical coordinates,
+        using the robot's known physical position at the first cell in the path as reference.
+
+        """
+
+        # print(".---------.")
+        # print("physical start")
+        # print(rm_physical_start)
+        (y, x) = pathPlanner._calculate_cell_from_physical(rm_physical_start)
+        # print("y, x")
+        # print(y, x)
+
+        x0_phys = -((x + 0.5) * pathPlanner.cell_size) + pathPlanner.room_size[0] / 2
+        y0_phys = ((y + 0.5) * pathPlanner.cell_size) - pathPlanner.room_size[1] / 2
+        # print(pathPlanner._calculate_cell_from_physical((x0_phys, y0_phys)))
+
+        # print("updated start")
+        # print(x0_phys, y0_phys)
+        y0_grid, x0_grid = self.path[0]
+
+        physical_path = []
+        for y, x in self.path:
+            dx_cells = x - x0_grid
+            dy_cells = y - y0_grid
+
+            x_phys = x0_phys - dx_cells * pathPlanner.cell_size
+            y_phys = y0_phys + dy_cells * pathPlanner.cell_size
+
+            physical_path.append((x_phys, y_phys))
+
+        return physical_path
