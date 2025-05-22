@@ -23,71 +23,108 @@ class Cell:
     def contains(self, y, x):
         return self.min_y <= y <= self.max_y and self.min_x <= x <= self.max_x
 
-    def sweep_path(self, a_start_func, start=None, goal=None):
-        """Generates a sweep path that covers all pixels in the cell, moving toward the goal."""
-        pixels = {
-            (y, x)
-            for y in range(self.min_y, self.max_y + 1)
-            for x in range(self.min_x, self.max_x + 1)
-        }
-
-        if goal is None:
-            goal = (self.max_y, self.max_x)
-        if start is None:
-            start = (self.min_y, self.min_x)
-
-        distances = {p: abs(p[0] - goal[0]) + abs(p[1] - goal[1]) for p in pixels}
-        visited = set()
+    def sweep_path(self, start, stride=3):
+        sy, sx = start
+        self.height = self.max_y - self.min_y + 1
+        self.width = self.max_x - self.min_x + 1
+        vertical = self.height < self.width  # Longest side = sweep direction
         path = [start]
-        current = start
-        visited.add(current)
-        direction = None
 
-        while len(visited) < len(pixels):
-            y, x = current
-            neighbors = []
-            for dy, dx in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                ny, nx = y + dy, x + dx
-                n = (ny, nx)
-                if n in pixels and n not in visited:
-                    neighbors.append(((dy, dx), distances[n], n))
+        if vertical:
+            y_start = (
+                self.min_y
+                if abs(sy - self.min_y) <= abs(sy - self.max_y)
+                else self.max_y
+            )
+            flip = abs(sx - self.max_x) < abs(sx - self.min_x)
 
-            if not neighbors:
-                unvisited = [p for p in pixels if p not in visited]
-                if not unvisited:
-                    break
-
-                unvisited.sort(
-                    key=lambda p: (abs(p[0] - y) + abs(p[1] - x), -distances[p])
-                )
-                target = unvisited[0]
-                sub_path = a_start_func(
-                    start=current,
-                    goal=target,
-                )
-                if not sub_path:
-                    break
-                for step in sub_path:
-                    visited.add(step)
-                    path.append(step)
-                current = target
-                direction = None
-                continue
-
-            neighbors.sort(
-                key=lambda item: (
-                    -item[1],
-                    0 if direction and item[0] == direction else 1,
-                )
+            y_range = (
+                range(y_start, self.max_y + 1, stride)
+                if y_start == self.min_y
+                else range(y_start, self.min_y - 1, -stride)
             )
 
-            next_dir, _, next_cell = neighbors[0]
-            visited.add(next_cell)
-            path.append(next_cell)
-            current = next_cell
-            direction = next_dir
+            if sy != y_start:
+                step = 1 if y_start > sy else -1
+                for y in range(sy + step, y_start + step, step):
+                    path.append((y, sx))
 
-        return path[1:]
+            for y in y_range:
+                x_range = (
+                    range(self.max_x, self.min_x - 1, -stride)
+                    if flip
+                    else range(self.min_x, self.max_x + 1, stride)
+                )
+                row = [(y, x) for x in x_range]
+
+                if path[-1] != row[0]:
+                    cur_y, cur_x = path[-1]
+                    tgt_y, tgt_x = row[0]
+                    if cur_x != tgt_x:
+                        path.extend(
+                            [
+                                (cur_y, x)
+                                for x in range(
+                                    cur_x + (1 if tgt_x > cur_x else -1),
+                                    tgt_x + (1 if tgt_x > cur_x else -1),
+                                    1 if tgt_x > cur_x else -1,
+                                )
+                            ]
+                        )
+                    if cur_y != tgt_y:
+                        path.append((tgt_y, tgt_x))
+
+                path.extend(row[1:])
+                flip = not flip
+
+        else:
+            x_start = (
+                self.min_x
+                if abs(sx - self.min_x) <= abs(sx - self.max_x)
+                else self.max_x
+            )
+            flip = abs(sy - self.max_y) < abs(sy - self.min_y)
+
+            x_range = (
+                range(x_start, self.max_x + 1, stride)
+                if x_start == self.min_x
+                else range(x_start, self.min_x - 1, -stride)
+            )
+
+            if sx != x_start:
+                step = 1 if x_start > sx else -1
+                for x in range(sx + step, x_start + step, step):
+                    path.append((sy, x))
+
+            for x in x_range:
+                y_range = (
+                    range(self.max_y, self.min_y - 1, -stride)
+                    if flip
+                    else range(self.min_y, self.max_y + 1, stride)
+                )
+                col = [(y, x) for y in y_range]
+
+                if path[-1] != col[0]:
+                    cur_y, cur_x = path[-1]
+                    tgt_y, tgt_x = col[0]
+                    if cur_y != tgt_y:
+                        path.extend(
+                            [
+                                (y, cur_x)
+                                for y in range(
+                                    cur_y + (1 if tgt_y > cur_y else -1),
+                                    tgt_y + (1 if tgt_y > cur_y else -1),
+                                    1 if tgt_y > cur_y else -1,
+                                )
+                            ]
+                        )
+                    if cur_x != tgt_x:
+                        path.append((tgt_y, tgt_x))
+
+                path.extend(col[1:])
+                flip = not flip
+
+        return path
 
     def find_goal_towards_next_cell(self, cell_b):
         """Finds the pixel in cell that borders the adjacent cell B for transition."""
@@ -255,6 +292,7 @@ class PathPlanner:
         self.cell_size = cell_size
         self.grid = self._downsample_to_robot_grid(occupancy_grid)
         self.grid = self._dilatate_walls_and_unknowns(4)
+        self.stride = 3
 
     def _dilatate_walls_and_unknowns(self, num_dilatation_cells):
         mask = np.isin(self.grid, [0, 2]).astype(np.uint8)
@@ -289,8 +327,6 @@ class PathPlanner:
                 block = occupancy_grid[
                     top_left_x:bottom_right_x, top_left_y:bottom_right_y
                 ]
-
-                # print("block size: " + str(block.size))
                 if np.sum(block == 2) > block.size * 0.015:
                     result[i, j] = 2
                 elif np.sum(block == 1) > block.size * 0.75:
@@ -310,7 +346,7 @@ class PathPlanner:
         y, x = pixel
         return 0 <= y < height and 0 <= x < width
 
-    def compute_a_star_path(self, start, goal):
+    def compute_a_star_path(self, start, goal, coverage=False):
         """Runs A* pathfinding on the grid from start to goal using the walkability function."""
         frontier = [(0, start)]
         came_from = {start: None}
@@ -326,13 +362,17 @@ class PathPlanner:
                 while current is not None:
                     path.append(current)
                     current = came_from[current]
-                return list(reversed(path))
+                path = list(reversed(path))
+                if coverage:
+                    return path[1:]
+                return path
             for dy, dx in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
                 next_cell = (current[0] + dy, current[1] + dx)
-                if (
-                    not self._is_valid(next_cell)
-                    or self.grid[next_cell[0], next_cell[1]] == 2
-                ):
+                if not self._is_valid(next_cell):
+                    continue
+                if not coverage and self.grid[next_cell[0], next_cell[1]] == 2:
+                    continue
+                if coverage and self.grid[next_cell[0], next_cell[1]] != 0:
                     continue
                 new_cost = cost_so_far[current] + 1
                 if next_cell not in cost_so_far or new_cost < cost_so_far[next_cell]:
@@ -387,15 +427,23 @@ class PathPlanner:
 
     def plan_full_coverage_path(self, start):
 
-        decomposer = GridDecomposer(self.grid)
+        grid = self.grid.copy()
+        self.grid
+        self.grid[self.grid == 0] = 2
+        self.grid[self.grid == 1] = 0
+        self.grid[self.grid == 2] = 1
 
-        start = (19, 0)
+        decomposer = GridDecomposer(self.grid)
+        print(decomposer.cells)
+        print(decomposer.adjacency)
+
         cell_id = decomposer.get_cell_id_from_point(start)
         distances = decomposer.compute_cell_distances(cell_id)
         order = decomposer.order_cells_by_gradient(
             start_cell_id=cell_id, distances=distances
         )
         order.append(cell_id)
+        print(order)
 
         path = []
         visited = np.zeros(len(decomposer.cells))
@@ -405,20 +453,17 @@ class PathPlanner:
             cell_idx = order[i]
             if not visited[cell_idx]:
                 visited[cell_idx] = 1
-                goal = decomposer.cells[cell_idx].find_goal_towards_next_cell(
-                    decomposer.cells[order[i + 1]]
-                )
                 cell_path = decomposer.cells[cell_idx].sweep_path(
-                    self.compute_a_star_path, start=pos, goal=goal
+                    start=pos, stride=self.stride
                 )
                 path.extend(cell_path)
                 current = path[-1]
                 pos = (
                     decomposer.cells[order[i + 1]].find_nearest_goal_in_cell(current)
                     if i < len(order) - 2
-                    else (19, 0)
+                    else start
                 )
-                path.extend(self.compute_a_star_path(current, pos))
+                path.extend(self.compute_a_star_path(current, pos, coverage=True))
             else:
                 for j in range(i + 1, len(order) - 1):
                     if not visited[order[j]]:
@@ -426,8 +471,11 @@ class PathPlanner:
                         pos = decomposer.cells[order[j]].find_nearest_goal_in_cell(
                             current
                         )
-                        path.extend(self.compute_a_star_path(current, pos))
+                        path.extend(
+                            self.compute_a_star_path(current, pos, coverage=True)
+                        )
                         break
+        self.grid = grid
         return path
 
 
