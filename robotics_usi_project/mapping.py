@@ -39,6 +39,7 @@ class OccupancyGrid:
         tex_w = int(ceil(physical_size[0] / physical_cell_size))
         tex_h = int(ceil(physical_size[1] / physical_cell_size))
         self.texture = pygame.Surface((tex_w, tex_h))
+        self.texture.fill((75, 75, 75))
         self.texture_walls = pygame.Surface((tex_w, tex_h), pygame.SRCALPHA)
         self.texture_walls.fill((0, 0, 0, 0))
 
@@ -258,7 +259,7 @@ class MappingMonitor:
                     if event.key == pygame.K_1:
                         next_robot_state = RobotState.ROTATE_360
                     elif event.key == pygame.K_2:
-                        next_robot_state = RobotState.FRONT_OBSTACLE_AVOIDANCE
+                        next_robot_state = RobotState.WALL_DETECTION
 
 
         if self._displaying_live:
@@ -294,10 +295,6 @@ class MappingMonitor:
     def _draw_mapper(self, room_mapper):
         self._screen.fill((0, 0, 0))
         
-        pygame.draw.rect(self._screen, (75, 75, 0), 
-                         ((MappingMonitor.SCREEN_DIMS[0] - MappingMonitor.MAP_DIMS[0])//2,
-                          (MappingMonitor.SCREEN_DIMS[1] - MappingMonitor.MAP_DIMS[1])//2,
-                          MappingMonitor.MAP_DIMS[0], MappingMonitor.MAP_DIMS[1]))
 
         if len(room_mapper.rm_pose_list) < 1:
             return
@@ -361,8 +358,12 @@ class MappingMonitor:
         self._screen.fill((0, 0, 0))
 
         if grid is None:
+            pygame.draw.rect(self._screen, (75, 75, 75), 
+                         ((MappingMonitor.SCREEN_DIMS[0] - MappingMonitor.MAP_DIMS[0])//2,
+                          (MappingMonitor.SCREEN_DIMS[1] - MappingMonitor.MAP_DIMS[1])//2,
+                          MappingMonitor.MAP_DIMS[0], MappingMonitor.MAP_DIMS[1] ))
             font = pygame.font.Font(None, 60)
-            text = font.render(f"Preview not availible.", True, (255, 0, 0))
+            text = font.render(f"Preview not availible.", True, (255, 125, 0))
             self._screen.blit(text, (200, 200))
             return
 

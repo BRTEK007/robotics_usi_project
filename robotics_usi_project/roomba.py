@@ -506,6 +506,7 @@ class ControllerNode(Node):
 
                 if self.returned_to_base:
                     self.state = RobotState.WAIT_FOR_ORDER_FULL_MAP
+                    return
                     #self.done_future.set_result(True)
 
                 self.get_logger().info("Scanning 360.")
