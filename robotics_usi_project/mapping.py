@@ -242,7 +242,7 @@ class MappingMonitor:
         scaled_walls = pygame.transform.scale(occ_grid.texture_walls, screen_size)
         self._screen.blit(scaled_walls, screen_pos)
 
-    def draw_and_update_state(self, room_mapper, path_planner, robot_state):
+    def draw_and_update_state(self, room_mapper, grid, robot_grid_pos, robot_state, path):
         """Visualizes room mapper and controlls. Returns new robot state."""
         next_robot_state = robot_state
 
@@ -264,7 +264,7 @@ class MappingMonitor:
         if self._displaying_live:
             self._draw_mapper(room_mapper)
         else:
-            self._draw_planner(path_planner)
+            self._draw_planner(grid, path, robot_grid_pos)
 
         # map outline
         pygame.draw.rect(self._screen, (255, 255, 0), 
@@ -293,6 +293,11 @@ class MappingMonitor:
 
     def _draw_mapper(self, room_mapper):
         self._screen.fill((0, 0, 0))
+        
+        pygame.draw.rect(self._screen, (75, 75, 0), 
+                         ((MappingMonitor.SCREEN_DIMS[0] - MappingMonitor.MAP_DIMS[0])//2,
+                          (MappingMonitor.SCREEN_DIMS[1] - MappingMonitor.MAP_DIMS[1])//2,
+                          MappingMonitor.MAP_DIMS[0], MappingMonitor.MAP_DIMS[1]))
 
         if len(room_mapper.rm_pose_list) < 1:
             return
@@ -352,26 +357,36 @@ class MappingMonitor:
             )
 
 
-    def _draw_planner(self, path_planner):
+    def _draw_planner(self, grid, path, robot_grid_pos):
         self._screen.fill((0, 0, 0))
 
-        if path_planner is None:
+        if grid is None:
             font = pygame.font.Font(None, 60)
             text = font.render(f"Preview not availible.", True, (255, 0, 0))
             self._screen.blit(text, (200, 200))
             return
 
         colors = {
-            0: (125, 125, 125),    # Unknown
+            0: (75, 75, 75),    # Unknown
             1: (0, 255, 0),    # Free
             2: (255, 0, 0)     # Wall
         }
 
-        rgb_array = np.zeros((path_planner.grid.shape[0], path_planner.grid.shape[1], 3), dtype=np.uint8)
+        rgb_array = np.zeros((grid.shape[0], grid.shape[1], 3), dtype=np.uint8)
         for val, color in colors.items():
-            rgb_array[path_planner.grid == val] = color
+            rgb_array[grid == val] = color
 
         surface = pygame.surfarray.make_surface(rgb_array)
+
+
+        if path is not None and path.ndim != 0: # Draw path to the surface
+            for point in path:
+                surface.set_at(point, (255, 255, 0))
+
+        if robot_grid_pos is not None:
+            surface.set_at(robot_grid_pos, (0, 0, 255))
+
+
         surface = pygame.transform.rotate(surface, -90) # rotate 90 degrees right
         surface = pygame.transform.flip(surface, True, False) # flip by Y axis
         surface = pygame.transform.scale(surface, (MappingMonitor.MAP_DIMS[0], MappingMonitor.MAP_DIMS[1])) # scale the texture

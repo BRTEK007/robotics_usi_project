@@ -66,7 +66,10 @@ class ControllerNode(Node):
         self.base_pose = self.pose2d
         self.away_from_starting_pos = False
 
+        
+        self.path_to_follow_grid = None
         self.path_planner = None
+
 
     def make_sensor_callback(self, index):
         """callback for the sensors"""
@@ -199,6 +202,8 @@ class ControllerNode(Node):
             start_point=self.pose2d[:2]
         )
 
+        self.path_to_follow_grid = np.array(path)
+
         if path is None:
             self.path_to_follow = None
             return
@@ -213,7 +218,19 @@ class ControllerNode(Node):
 
     def monitor_loop(self):
         """Calls the mapping monitor to draw to the screen."""
-        self.state = self.room_monitor.draw_and_update_state(room_mapper=self.room_mapper, path_planner=self.path_planner, robot_state=self.state)
+
+        robot_grid_pos = None
+        grid = None
+
+        if self.path_planner is not None:
+            robot_grid_pos = self.path_planner.calculate_cell_from_physical(self.pose2d[:2])
+            grid = self.path_planner.grid
+
+        self.state = self.room_monitor.draw_and_update_state(room_mapper=self.room_mapper, 
+                                                             grid=grid,
+                                                             robot_grid_pos=robot_grid_pos,
+                                                             robot_state=self.state,
+                                                             path=self.path_to_follow_grid)
 
     def mapping_loop(self):
         """Updates the room mapper based on measurments from scanners."""
@@ -576,13 +593,18 @@ class ControllerNode(Node):
                 occupancy_grid, RoomMapper.ROOM_SIZE, robot_large_side
             )
             path = self.path_planner.compute_a_star_path(
-                start=self.path_planner._calculate_cell_from_physical(self.pose2d[:2]),
-                goal=self.path_planner._calculate_cell_from_physical(self.base_pose),
+                start=self.path_planner.calculate_cell_from_physical(self.pose2d[:2]),
+                goal=self.path_planner.calculate_cell_from_physical(self.base_pose),
             )
+            
+            self.path_to_follow_grid = np.array(path)
+            
             path = FourNeighborPath(path)
+            
             self.path_to_follow = path.obtain_physical_path(
                 self.path_planner, self.pose2d[:2]
             )
+
             self.get_logger().info("Path: " + str(self.path_to_follow))
             self.stop()
             self.state = RobotState.PATH_FOLLOWING

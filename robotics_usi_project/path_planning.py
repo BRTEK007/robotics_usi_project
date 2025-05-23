@@ -334,7 +334,7 @@ class PathPlanner:
 
         return result
 
-    def _calculate_cell_from_physical(self, rm_physical):
+    def calculate_cell_from_physical(self, rm_physical):
         """Calculates the cell position of a real point"""
         x = int((-rm_physical[0] + self.room_size[0] / 2) / self.cell_size)
         y = int((rm_physical[1] + self.room_size[1] / 2) / self.cell_size)
@@ -389,7 +389,7 @@ class PathPlanner:
         that is adjacent to at least one unknown cell (0). Avoids walls (2).
 
         """
-        start_cell = self._calculate_cell_from_physical(start_point)
+        start_cell = self.calculate_cell_from_physical(start_point)
         visited = np.zeros_like(self.grid, dtype=bool)
         parent = dict()
 
@@ -512,7 +512,7 @@ class FourNeighborPath:
 
         """
 
-        (y, x) = pathPlanner._calculate_cell_from_physical(rm_physical_start)
+        (y, x) = pathPlanner.calculate_cell_from_physical(rm_physical_start)
 
         x0_phys = -((x + 0.5) * pathPlanner.cell_size) + pathPlanner.room_size[0] / 2
         y0_phys = ((y + 0.5) * pathPlanner.cell_size) - pathPlanner.room_size[1] / 2
