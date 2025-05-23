@@ -12,6 +12,7 @@ from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from .mapping import MappingMonitor, RoomMapper, MeasurmentData
 from .path_planning import PathPlanner, FourNeighborPath
+from .visualization_helpers import visualize_grid_only, visualize_grid_with_cells_and_path
 
 
 # Possible states for the state machine controller
@@ -76,6 +77,8 @@ class ControllerNode(Node):
         self.room_mapper = RoomMapper(logger=self.get_logger())
         self.base_pose = self.pose2d
         self.away_from_starting_pos = False
+
+        self.path_planner = None
 
     def make_sensor_callback(self, index):
         """callback for the sensors"""
@@ -207,6 +210,7 @@ class ControllerNode(Node):
         path = self.path_planner.compute_bfs_path_to_nearest_frontier(
             start_point=self.pose2d[:2]
         )
+
         if path is None:
             self.path_to_follow = None
             return
@@ -214,13 +218,14 @@ class ControllerNode(Node):
         self.path_to_follow = path.obtain_physical_path(
             self.path_planner, self.pose2d[:2]
         )
+
         self.get_logger().info("Path: " + str(self.path_to_follow))
         self.stop()
         np.save("arr2.npy", occupancy_grid)
 
     def monitor_loop(self):
         """Calls the mapping monitor to draw to the screen."""
-        self.room_monitor.draw(room_mapper=self.room_mapper)
+        self.room_monitor.draw(room_mapper=self.room_mapper, path_planner=self.path_planner)
 
     def mapping_loop(self):
         """Updates the room mapper based on measurments from scanners."""

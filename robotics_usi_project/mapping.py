@@ -221,7 +221,7 @@ class RoomMapper:
 
 
 class MappingMonitor:
-    SCREEN_DIMS = (1000, 1000)
+    SCREEN_DIMS = (800, 800)
     """Draws room mapping to the screen."""
 
     def __init__(self):
@@ -240,18 +240,25 @@ class MappingMonitor:
         scaled_walls = pygame.transform.scale(occ_grid.texture_walls, screen_size)
         self._screen.blit(scaled_walls, screen_pos)
 
-    def draw(self, room_mapper):
+    def draw(self, room_mapper, path_planner):
         """Visualizes room mapper."""
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 exit()
+
+        if path_planner is not None:
+            self._draw_planner(path_planner)
+        else:
+            self._draw_mapper(room_mapper)
+
+    def _draw_mapper(self, room_mapper):
         self._screen.fill((0, 0, 0))
 
         if len(room_mapper.rm_pose_list) < 1:
             return
 
-        world_to_screen_scaling = min(
+        world_to_screen_scaling = 0.9 * min(
             MappingMonitor.SCREEN_DIMS[0] / room_mapper.room_size[0],
             MappingMonitor.SCREEN_DIMS[1] / room_mapper.room_size[1],
         )
@@ -307,6 +314,26 @@ class MappingMonitor:
 
         pygame.display.flip()
 
+    def _draw_planner(self, path_planner):
+        self._screen.fill((0, 0, 0))
+
+        colors = {
+            0: (125, 125, 125),    # Unknown
+            1: (0, 255, 0),    # Free
+            2: (255, 0, 0)     # Wall
+        }
+
+        rgb_array = np.zeros((path_planner.grid.shape[0], path_planner.grid.shape[1], 3), dtype=np.uint8)
+        for val, color in colors.items():
+            rgb_array[path_planner.grid == val] = color
+
+        surface = pygame.surfarray.make_surface(rgb_array)
+        surface = pygame.transform.rotate(surface, -90) # rotate 90 degrees right
+        surface = pygame.transform.flip(surface, True, False) # flip by Y axis
+        surface = pygame.transform.scale(surface, (600, 600)) # scale the texture
+        self._screen.blit(surface, (0, 0))
+
+        pygame.display.flip()
 
 class MeasurmentData:
     def __init__(self, pose, sensor_data):
