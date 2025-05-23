@@ -17,16 +17,16 @@ from .visualization_helpers import visualize_grid_only, visualize_grid_with_cell
 
 # Possible states for the state machine controller
 class RobotState(Enum):
-    WALL_DETECTION = 0
-    OBSTACLE_AVOIDANCE = 1
-    ROTATE_90 = 2
-    WALL_FOLLOWING = 3
-    FRONT_OBSTACLE_AVOIDANCE = 4
-    CORNER_FOLLOWING = 5
-    PATH_FOLLOWING = 6
-    ROTATE_360 = 7
-    RETURN_TO_BASE = 8
-    SCAN_FORWARD = 9
+    WALL_DETECTION = "wall detection"
+    OBSTACLE_AVOIDANCE = "obstacle avoidance"
+    ROTATE_90 = "rotating 90"
+    WALL_FOLLOWING = "wall following"
+    FRONT_OBSTACLE_AVOIDANCE = "front obstacle avoidance"
+    CORNER_FOLLOWING = "corner following"
+    PATH_FOLLOWING = "path following"
+    ROTATE_360 = "rotating 360"
+    RETURN_TO_BASE = "returning to base"
+    SCAN_FORWARD = "scanning forward"
 
 
 class ControllerNode(Node):
@@ -225,7 +225,7 @@ class ControllerNode(Node):
 
     def monitor_loop(self):
         """Calls the mapping monitor to draw to the screen."""
-        self.room_monitor.draw(room_mapper=self.room_mapper, path_planner=self.path_planner)
+        self.room_monitor.draw(room_mapper=self.room_mapper, path_planner=self.path_planner, state_msg=self.state.value)
 
     def mapping_loop(self):
         """Updates the room mapper based on measurments from scanners."""

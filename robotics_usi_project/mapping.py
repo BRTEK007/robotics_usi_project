@@ -3,7 +3,6 @@ import numpy as np
 from collections import deque
 import pygame
 
-
 def draw_rotated_rect(
     screen, screen_pos, angle, dimensions, color=(255, 0, 0), width=2
 ):
@@ -222,6 +221,7 @@ class RoomMapper:
 
 class MappingMonitor:
     SCREEN_DIMS = (800, 800)
+    MAP_DIMS = (600, 600)
     """Draws room mapping to the screen."""
 
     def __init__(self):
@@ -240,7 +240,7 @@ class MappingMonitor:
         scaled_walls = pygame.transform.scale(occ_grid.texture_walls, screen_size)
         self._screen.blit(scaled_walls, screen_pos)
 
-    def draw(self, room_mapper, path_planner):
+    def draw(self, room_mapper, path_planner, state_msg):
         """Visualizes room mapper."""
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -252,15 +252,29 @@ class MappingMonitor:
         else:
             self._draw_mapper(room_mapper)
 
+        # map outline
+        pygame.draw.rect(self._screen, (255, 255, 0), 
+                         ((MappingMonitor.SCREEN_DIMS[0] - MappingMonitor.MAP_DIMS[0])//2 -2,
+                          (MappingMonitor.SCREEN_DIMS[1] - MappingMonitor.MAP_DIMS[1])//2 -2,
+                          MappingMonitor.MAP_DIMS[0] + 4, MappingMonitor.MAP_DIMS[1] + 4),
+                          width=2)
+
+        font = pygame.font.Font(None, 20)
+        text = font.render(f"current state: {state_msg}", True, (255, 255, 255))
+        self._screen.blit(text, (1, 1))
+        
+        pygame.display.flip()
+        
+
     def _draw_mapper(self, room_mapper):
         self._screen.fill((0, 0, 0))
 
         if len(room_mapper.rm_pose_list) < 1:
             return
 
-        world_to_screen_scaling = 0.9 * min(
-            MappingMonitor.SCREEN_DIMS[0] / room_mapper.room_size[0],
-            MappingMonitor.SCREEN_DIMS[1] / room_mapper.room_size[1],
+        world_to_screen_scaling = min(
+            MappingMonitor.MAP_DIMS[0] / room_mapper.room_size[0],
+            MappingMonitor.MAP_DIMS[1] / room_mapper.room_size[1],
         )
 
         self._draw_occupancy_grid(
@@ -312,7 +326,6 @@ class MappingMonitor:
                 width,
             )
 
-        pygame.display.flip()
 
     def _draw_planner(self, path_planner):
         self._screen.fill((0, 0, 0))
@@ -330,10 +343,11 @@ class MappingMonitor:
         surface = pygame.surfarray.make_surface(rgb_array)
         surface = pygame.transform.rotate(surface, -90) # rotate 90 degrees right
         surface = pygame.transform.flip(surface, True, False) # flip by Y axis
-        surface = pygame.transform.scale(surface, (600, 600)) # scale the texture
-        self._screen.blit(surface, (0, 0))
+        surface = pygame.transform.scale(surface, (MappingMonitor.MAP_DIMS[0], MappingMonitor.MAP_DIMS[1])) # scale the texture
+        self._screen.blit(surface, (
+            (MappingMonitor.SCREEN_DIMS[0]-MappingMonitor.MAP_DIMS[0])//2,
+            (MappingMonitor.SCREEN_DIMS[1]-MappingMonitor.MAP_DIMS[1])//2))
 
-        pygame.display.flip()
 
 class MeasurmentData:
     def __init__(self, pose, sensor_data):
