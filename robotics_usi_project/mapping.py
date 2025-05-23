@@ -229,6 +229,7 @@ class MappingMonitor:
         self._screen = pygame.display.set_mode(MappingMonitor.SCREEN_DIMS)
         pygame.display.set_caption("Room live feedback")
         # self.world_to_screen_scaling = 200 # meters in world to pixels on the screen
+        self._displaying_live = True # displays live map building, False -> shows path planner
 
     def _draw_occupancy_grid(self, occ_grid, screen_pos, screen_size):
         """
@@ -246,11 +247,14 @@ class MappingMonitor:
             if event.type == pygame.QUIT:
                 pygame.quit()
                 exit()
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_v:
+                    self._displaying_live = not self._displaying_live
 
-        if path_planner is not None:
-            self._draw_planner(path_planner)
-        else:
+        if self._displaying_live:
             self._draw_mapper(room_mapper)
+        else:
+            self._draw_planner(path_planner)
 
         # map outline
         pygame.draw.rect(self._screen, (255, 255, 0), 
@@ -259,9 +263,11 @@ class MappingMonitor:
                           MappingMonitor.MAP_DIMS[0] + 4, MappingMonitor.MAP_DIMS[1] + 4),
                           width=2)
 
-        font = pygame.font.Font(None, 20)
-        text = font.render(f"current state: {state_msg}", True, (255, 255, 255))
+        font = pygame.font.Font(None, 25)
+        text = font.render(f"Current state: {state_msg}", True, (255, 255, 255))
         self._screen.blit(text, (1, 1))
+        text = font.render(f"Press V to switch views.", True, (255, 255, 255))
+        self._screen.blit(text, (1, 1 + 20))
         
         pygame.display.flip()
         
@@ -329,6 +335,12 @@ class MappingMonitor:
 
     def _draw_planner(self, path_planner):
         self._screen.fill((0, 0, 0))
+
+        if path_planner is None:
+            font = pygame.font.Font(None, 60)
+            text = font.render(f"Preview not availible.", True, (255, 0, 0))
+            self._screen.blit(text, (200, 200))
+            return
 
         colors = {
             0: (125, 125, 125),    # Unknown
