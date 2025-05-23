@@ -14,3 +14,4 @@ class RobotState(Enum):
     SCAN_FORWARD = "scanning forward"
     WAIT_FOR_ORDER_NO_MAP = "waiting for orders (no map)"
     WAIT_FOR_ORDER_FULL_MAP = "waiting for orders (full map)"
+    ROOM_SWEEP = "sweeping the room"

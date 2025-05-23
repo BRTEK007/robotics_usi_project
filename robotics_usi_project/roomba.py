@@ -226,7 +226,7 @@ class ControllerNode(Node):
             robot_grid_pos = self.path_planner.calculate_cell_from_physical(self.pose2d[:2])
             grid = self.path_planner.grid
 
-        self.state = self.room_monitor.draw_and_update_state(room_mapper=self.room_mapper, 
+        self.state, clicked_pos = self.room_monitor.draw_and_update_state(room_mapper=self.room_mapper, 
                                                              grid=grid,
                                                              robot_grid_pos=robot_grid_pos,
                                                              robot_state=self.state,
@@ -506,6 +506,9 @@ class ControllerNode(Node):
 
                 if self.returned_to_base:
                     self.state = RobotState.WAIT_FOR_ORDER_FULL_MAP
+                    self.path_to_follow = None
+                    self.rotation_done = True
+                    self.away_from_starting_pos = False
                     return
                     #self.done_future.set_result(True)
 
@@ -645,9 +648,11 @@ class ControllerNode(Node):
                         self.get_logger().info("Total scan completed")
                         self.state = RobotState.RETURN_TO_BASE
         elif self.state == RobotState.WAIT_FOR_ORDER_NO_MAP:
-            pass
+            self.get_logger().info("None scanned, waiting")
         elif self.state == RobotState.WAIT_FOR_ORDER_FULL_MAP:
-            pass
+            self.get_logger().info("All scanned, waiting")
+        elif self.state == RobotState.ROOM_SWEEP:
+            self.get_logger().info("Sweeping the room")
 
 
 def main():

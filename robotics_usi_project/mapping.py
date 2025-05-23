@@ -232,6 +232,7 @@ class MappingMonitor:
         pygame.display.set_caption("Room live feedback")
         # self.world_to_screen_scaling = 200 # meters in world to pixels on the screen
         self._displaying_live = True # displays live map building, False -> shows path planner
+        self._is_selecting_point = False # is map waiting for user to pick a point
 
     def _draw_occupancy_grid(self, occ_grid, screen_pos, screen_size):
         """
@@ -244,22 +245,40 @@ class MappingMonitor:
         self._screen.blit(scaled_walls, screen_pos)
 
     def draw_and_update_state(self, room_mapper, grid, robot_grid_pos, robot_state, path):
-        """Visualizes room mapper and controlls. Returns new robot state."""
+        """Visualizes room mapper and controlls. Returns new robot state, and clicked position."""
         next_robot_state = robot_state
+        clicked_pos = None
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 exit()
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if not self._is_selecting_point:
+                    continue
+                if event.button != 1:
+                    continue
+                
+                # TODO handle event.pose and set clicked_pos to the clicked grid position if valid
+            
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_v:
                     self._displaying_live = not self._displaying_live
-                
+
+                if self._is_selecting_point:
+                    continue
+
                 if robot_state == RobotState.WAIT_FOR_ORDER_NO_MAP:
                     if event.key == pygame.K_1:
                         next_robot_state = RobotState.ROTATE_360
                     elif event.key == pygame.K_2:
                         next_robot_state = RobotState.WALL_DETECTION
+                
+                elif robot_state == RobotState.WAIT_FOR_ORDER_FULL_MAP:
+                    if event.key == pygame.K_1:
+                        self._is_selecting_point = True
+                    elif event.key == pygame.K_2:
+                        next_robot_state = RobotState.ROOM_SWEEP
 
 
         if self._displaying_live:
@@ -280,16 +299,21 @@ class MappingMonitor:
         text = font.render(f"Press V to switch views.", True, (255, 255, 255))
         self._screen.blit(text, (1, 1 + 20))
 
-        if robot_state == RobotState.WAIT_FOR_ORDER_NO_MAP:
-            text = font.render(f"Press 1 for grid scanning | Press 2 for wall following scan.", True, (255, 255, 0))
-            self._screen.blit(text, (1, 1 + 20*2))
-        elif robot_state == RobotState.WAIT_FOR_ORDER_FULL_MAP:
-            text = font.render(f"Press 1 for navigation mode. | Press 2 to begin sweep.", True, (255, 255, 0))
-            self._screen.blit(text, (1, 1 + 20*2))
+
+        if self._is_selecting_point:
+                text = font.render(f"Pick a valid point for robot to navigate to.", True, (255, 255, 0))
+                self._screen.blit(text, (1, 1 + 20*2))
+        else:
+            if robot_state == RobotState.WAIT_FOR_ORDER_NO_MAP:
+                text = font.render(f"Press 1 for grid scanning | Press 2 for wall following scan.", True, (255, 255, 0))
+                self._screen.blit(text, (1, 1 + 20*2))
+            elif robot_state == RobotState.WAIT_FOR_ORDER_FULL_MAP:
+                text = font.render(f"Press 1 for navigation mode. | Press 2 to begin sweep.", True, (255, 255, 0))
+                self._screen.blit(text, (1, 1 + 20*2))
 
         pygame.display.flip()
 
-        return next_robot_state
+        return next_robot_state, clicked_pos
         
 
     def _draw_mapper(self, room_mapper):
