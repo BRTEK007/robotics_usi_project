@@ -221,8 +221,8 @@ class RoomMapper:
 
 
 class MappingMonitor:
-    SCREEN_DIMS = (800, 800)
-    MAP_DIMS = (600, 600)
+    SCREEN_DIMS = (900, 900)
+    MAP_DIMS = (750, 750)
     """Draws room mapping to the screen."""
 
     def __init__(self):
