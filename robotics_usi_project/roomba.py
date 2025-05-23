@@ -13,21 +13,8 @@ from nav_msgs.msg import Odometry
 from .mapping import MappingMonitor, RoomMapper, MeasurmentData
 from .path_planning import PathPlanner, FourNeighborPath
 from .visualization_helpers import visualize_grid_only, visualize_grid_with_cells_and_path
+from .robot_state import RobotState
 
-
-# Possible states for the state machine controller
-class RobotState(Enum):
-    WALL_DETECTION = "wall detection"
-    OBSTACLE_AVOIDANCE = "obstacle avoidance"
-    ROTATE_90 = "rotating 90"
-    WALL_FOLLOWING = "wall following"
-    FRONT_OBSTACLE_AVOIDANCE = "front obstacle avoidance"
-    CORNER_FOLLOWING = "corner following"
-    PATH_FOLLOWING = "path following"
-    ROTATE_360 = "rotating 360"
-    RETURN_TO_BASE = "returning to base"
-    SCAN_FORWARD = "scanning forward"
-    WAIT_FOR_ORDER = "waiting for orders"
 
 
 class ControllerNode(Node):
@@ -64,7 +51,7 @@ class ControllerNode(Node):
         self.scan_index = 0
         initial_angle = self.pose2d[2] % (2 * pi)
         self.target_angle = (initial_angle + 2 * pi - 0.05) % (2 * pi)
-        self.state = RobotState.WAIT_FOR_ORDER
+        self.state = RobotState.WAIT_FOR_ORDER_NO_MAP
 
         # Use this to enable wall following
         # self.state = RobotState.WALL_DETECTION
@@ -226,7 +213,7 @@ class ControllerNode(Node):
 
     def monitor_loop(self):
         """Calls the mapping monitor to draw to the screen."""
-        self.room_monitor.draw(room_mapper=self.room_mapper, path_planner=self.path_planner, state_msg=self.state.value)
+        self.state = self.room_monitor.draw_and_update_state(room_mapper=self.room_mapper, path_planner=self.path_planner, robot_state=self.state)
 
     def mapping_loop(self):
         """Updates the room mapper based on measurments from scanners."""
@@ -501,7 +488,7 @@ class ControllerNode(Node):
                 self.target_angle = (initial_angle + 2 * pi - 0.05) % (2 * pi)
 
                 if self.returned_to_base:
-                    self.state = RobotState.WAIT_FOR_ORDER
+                    self.state = RobotState.WAIT_FOR_ORDER_FULL_MAP
                     #self.done_future.set_result(True)
 
                 self.get_logger().info("Scanning 360.")
@@ -634,7 +621,9 @@ class ControllerNode(Node):
                     else:
                         self.get_logger().info("Total scan completed")
                         self.state = RobotState.RETURN_TO_BASE
-        elif self.state == RobotState.WAIT_FOR_ORDER:
+        elif self.state == RobotState.WAIT_FOR_ORDER_NO_MAP:
+            pass
+        elif self.state == RobotState.WAIT_FOR_ORDER_FULL_MAP:
             pass
 
 

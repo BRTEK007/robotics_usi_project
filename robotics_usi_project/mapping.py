@@ -2,6 +2,7 @@ from math import cos, sin, ceil, radians
 import numpy as np
 from collections import deque
 import pygame
+from .robot_state import RobotState
 
 def draw_rotated_rect(
     screen, screen_pos, angle, dimensions, color=(255, 0, 0), width=2
@@ -241,8 +242,10 @@ class MappingMonitor:
         scaled_walls = pygame.transform.scale(occ_grid.texture_walls, screen_size)
         self._screen.blit(scaled_walls, screen_pos)
 
-    def draw(self, room_mapper, path_planner, state_msg):
-        """Visualizes room mapper."""
+    def draw_and_update_state(self, room_mapper, path_planner, robot_state):
+        """Visualizes room mapper and controlls. Returns new robot state."""
+        next_robot_state = robot_state
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -250,6 +253,13 @@ class MappingMonitor:
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_v:
                     self._displaying_live = not self._displaying_live
+                
+                if robot_state == RobotState.WAIT_FOR_ORDER_NO_MAP:
+                    if event.key == pygame.K_1:
+                        next_robot_state = RobotState.ROTATE_360
+                    elif event.key == pygame.K_2:
+                        next_robot_state = RobotState.FRONT_OBSTACLE_AVOIDANCE
+
 
         if self._displaying_live:
             self._draw_mapper(room_mapper)
@@ -264,12 +274,21 @@ class MappingMonitor:
                           width=2)
 
         font = pygame.font.Font(None, 25)
-        text = font.render(f"Current state: {state_msg}", True, (255, 255, 255))
+        text = font.render(f"Current state: {robot_state.value}", True, (255, 255, 255))
         self._screen.blit(text, (1, 1))
         text = font.render(f"Press V to switch views.", True, (255, 255, 255))
         self._screen.blit(text, (1, 1 + 20))
-        
+
+        if robot_state == RobotState.WAIT_FOR_ORDER_NO_MAP:
+            text = font.render(f"Press 1 for grid scanning | Press 2 for wall following scan.", True, (255, 255, 0))
+            self._screen.blit(text, (1, 1 + 20*2))
+        elif robot_state == RobotState.WAIT_FOR_ORDER_FULL_MAP:
+            text = font.render(f"Press 1 for navigation mode. | Press 2 to begin sweep.", True, (255, 255, 0))
+            self._screen.blit(text, (1, 1 + 20*2))
+
         pygame.display.flip()
+
+        return next_robot_state
         
 
     def _draw_mapper(self, room_mapper):
