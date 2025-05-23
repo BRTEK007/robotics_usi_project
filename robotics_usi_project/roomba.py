@@ -27,6 +27,7 @@ class RobotState(Enum):
     ROTATE_360 = "rotating 360"
     RETURN_TO_BASE = "returning to base"
     SCAN_FORWARD = "scanning forward"
+    WAIT_FOR_ORDER = "waiting for orders"
 
 
 class ControllerNode(Node):
@@ -63,7 +64,7 @@ class ControllerNode(Node):
         self.scan_index = 0
         initial_angle = self.pose2d[2] % (2 * pi)
         self.target_angle = (initial_angle + 2 * pi - 0.05) % (2 * pi)
-        self.state = RobotState.ROTATE_360
+        self.state = RobotState.WAIT_FOR_ORDER
 
         # Use this to enable wall following
         # self.state = RobotState.WALL_DETECTION
@@ -498,8 +499,10 @@ class ControllerNode(Node):
                 self.stop()
                 initial_angle = self.pose2d[2] % (2 * pi)
                 self.target_angle = (initial_angle + 2 * pi - 0.05) % (2 * pi)
+
                 if self.returned_to_base:
-                    self.done_future.set_result(True)
+                    self.state = RobotState.WAIT_FOR_ORDER
+                    #self.done_future.set_result(True)
 
                 self.get_logger().info("Scanning 360.")
                 self.last_angle = self.pose2d[2]
@@ -631,6 +634,8 @@ class ControllerNode(Node):
                     else:
                         self.get_logger().info("Total scan completed")
                         self.state = RobotState.RETURN_TO_BASE
+        elif self.state == RobotState.WAIT_FOR_ORDER:
+            pass
 
 
 def main():
