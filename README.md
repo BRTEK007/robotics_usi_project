@@ -2,7 +2,8 @@
 
 ## Video demonstration
 
-https://www.youtube.com/watch?v=41ErA4UiOQw
+part one: https://www.youtube.com/watch?v=41ErA4UiOQw \
+part two: https://www.youtube.com/watch?v=dbaJPfQZw5I
 
 ## The code
 
