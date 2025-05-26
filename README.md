@@ -1,5 +1,11 @@
 # Robotics USI 2025 project
 
+## Video demonstration
+
+https://www.youtube.com/watch?v=41ErA4UiOQw
+
+## The code
+
 This package is ment to be used inside the robomaster usi workspace: https://github.com/idsia-robotics/robotics-lab-usi-robomaster
 
 ## Building package
@@ -18,9 +24,9 @@ This package is ment to be used inside the robomaster usi workspace: https://git
 2) Run robomaster
 
 `pixi shell`\
-`ros2 launch robomaster_example ep_tof.launch name:=/rm0`
+`ros2 launch robotics_usi_project ep_tof.launch name:=/rm0`
 
 3) Run controller
 
 `pixi shell`\
-`ros2 launch robomaster_example controller.launch name:=/rm0`
+`ros2 launch robotics_usi_project controller.launch name:=/rm0`
