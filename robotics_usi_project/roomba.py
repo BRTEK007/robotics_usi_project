@@ -226,11 +226,48 @@ class ControllerNode(Node):
             robot_grid_pos = self.path_planner.calculate_cell_from_physical(self.pose2d[:2])
             grid = self.path_planner.grid
 
-        self.state, clicked_pos = self.room_monitor.draw_and_update_state(room_mapper=self.room_mapper, 
+        self.state, clicked_grid_pos = self.room_monitor.draw_and_update_state(room_mapper=self.room_mapper, 
                                                              grid=grid,
                                                              robot_grid_pos=robot_grid_pos,
                                                              robot_state=self.state,
                                                              path=self.path_to_follow_grid)
+        
+        if clicked_grid_pos is not None:
+            self.get_logger().info("robot grid pos: " + str(robot_grid_pos))
+            self.get_logger().info("clicked grid pos: " + str(clicked_grid_pos))
+            robot_large_side = max(RoomMapper.RM_DIMS)
+            occupancy_grid = self.room_mapper.occupancy_grid.to_numpy_array().T
+            self.path_planner = PathPlanner(
+                occupancy_grid, RoomMapper.ROOM_SIZE, robot_large_side
+            )
+
+
+            path = None
+            try:
+                path = self.path_planner.compute_a_star_path(
+                    start=self.path_planner.calculate_cell_from_physical(self.pose2d[:2]),
+                    goal=clicked_grid_pos,
+                )
+            except AssertionError as e:
+                self.get_logger().info("Path error: " + str(e))
+                return
+
+            
+            self.path_to_follow_grid = np.array(path)
+            
+            path = FourNeighborPath(path)
+            
+            self.path_to_follow = path.obtain_physical_path(
+                self.path_planner, self.pose2d[:2]
+            )
+
+            self.get_logger().info("Path: " + str(self.path_to_follow))
+            self.stop()
+            self.state = RobotState.PATH_FOLLOWING
+            self.current_target_index = 0
+            self.update_goal_angle()
+
+            
 
     def mapping_loop(self):
         """Updates the room mapper based on measurments from scanners."""

@@ -247,7 +247,7 @@ class MappingMonitor:
     def draw_and_update_state(self, room_mapper, grid, robot_grid_pos, robot_state, path):
         """Visualizes room mapper and controlls. Returns new robot state, and clicked position."""
         next_robot_state = robot_state
-        clicked_pos = None
+        clicked_grid_pos = None
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -258,7 +258,31 @@ class MappingMonitor:
                     continue
                 if event.button != 1:
                     continue
+                if grid is None:
+                    continue
+
+                mouse_x = event.pos[0]
+                mouse_y = event.pos[1]
                 
+                grid_h, grid_w = grid.shape[:2]
+
+                cell_x = mouse_x - (MappingMonitor.SCREEN_DIMS[0] - MappingMonitor.MAP_DIMS[0])//2 
+                cell_y = mouse_y - (MappingMonitor.SCREEN_DIMS[1] - MappingMonitor.MAP_DIMS[1])//2 
+
+                # flip y 180
+                cell_y = MappingMonitor.MAP_DIMS[1]-cell_y
+                # rotate 90 left 
+                dir_x, dir_y = cell_x - MappingMonitor.MAP_DIMS[0]/2, cell_y-MappingMonitor.MAP_DIMS[1]/2
+                dir_x, dir_y = -dir_y, dir_x
+                cell_x, cell_y = MappingMonitor.MAP_DIMS[0]/2 + dir_x, MappingMonitor.MAP_DIMS[1]/2 + dir_y
+
+
+                cell_x = int((float(cell_x) / MappingMonitor.MAP_DIMS[0]) * grid_w)
+                cell_y = int((float(cell_y) / MappingMonitor.MAP_DIMS[1]) * grid_h)
+
+
+                clicked_grid_pos = (cell_x, cell_y)
+                self._is_selecting_point = False
                 # TODO handle event.pose and set clicked_pos to the clicked grid position if valid
             
             elif event.type == pygame.KEYDOWN:
@@ -313,7 +337,7 @@ class MappingMonitor:
 
         pygame.display.flip()
 
-        return next_robot_state, clicked_pos
+        return next_robot_state, clicked_grid_pos
         
 
     def _draw_mapper(self, room_mapper):
