@@ -12,9 +12,11 @@ from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from .mapping import MappingMonitor, RoomMapper, MeasurmentData
 from .path_planning import PathPlanner, FourNeighborPath
-from .visualization_helpers import visualize_grid_only, visualize_grid_with_cells_and_path
+from .visualization_helpers import (
+    visualize_grid_only,
+    visualize_grid_with_cells_and_path,
+)
 from .robot_state import RobotState
-
 
 
 class ControllerNode(Node):
@@ -43,7 +45,7 @@ class ControllerNode(Node):
         self.done_future = Future()
 
         # movement parameters
-        self.threshold_distance = 0.3
+        self.threshold_distance = 0.35
         self.avoidance_threshold = 0.35
         self.forward_speed = 0.45
         self.angular_speed = 0.5
@@ -63,13 +65,11 @@ class ControllerNode(Node):
         # room monitor parameters
         self.room_monitor = MappingMonitor()
         self.room_mapper = RoomMapper(logger=self.get_logger())
-        self.base_pose = self.pose2d
+        self.base_pose = None
         self.away_from_starting_pos = False
 
-        
         self.path_to_follow_grid = None
         self.path_planner = None
-
 
     def make_sensor_callback(self, index):
         """callback for the sensors"""
@@ -223,15 +223,19 @@ class ControllerNode(Node):
         grid = None
 
         if self.path_planner is not None:
-            robot_grid_pos = self.path_planner.calculate_cell_from_physical(self.pose2d[:2])
+            robot_grid_pos = self.path_planner.calculate_cell_from_physical(
+                self.pose2d[:2]
+            )
             grid = self.path_planner.grid
 
-        self.state, clicked_grid_pos = self.room_monitor.draw_and_update_state(room_mapper=self.room_mapper, 
-                                                             grid=grid,
-                                                             robot_grid_pos=robot_grid_pos,
-                                                             robot_state=self.state,
-                                                             path=self.path_to_follow_grid)
-        
+        self.state, clicked_grid_pos = self.room_monitor.draw_and_update_state(
+            room_mapper=self.room_mapper,
+            grid=grid,
+            robot_grid_pos=robot_grid_pos,
+            robot_state=self.state,
+            path=self.path_to_follow_grid,
+        )
+
         if clicked_grid_pos is not None:
             self.get_logger().info("robot grid pos: " + str(robot_grid_pos))
             self.get_logger().info("clicked grid pos: " + str(clicked_grid_pos))
@@ -241,22 +245,22 @@ class ControllerNode(Node):
                 occupancy_grid, RoomMapper.ROOM_SIZE, robot_large_side
             )
 
-
             path = None
             try:
                 path = self.path_planner.compute_a_star_path(
-                    start=self.path_planner.calculate_cell_from_physical(self.pose2d[:2]),
+                    start=self.path_planner.calculate_cell_from_physical(
+                        self.pose2d[:2]
+                    ),
                     goal=clicked_grid_pos,
                 )
             except AssertionError as e:
                 self.get_logger().info("Path error: " + str(e))
                 return
 
-            
             self.path_to_follow_grid = np.array(path)
-            
+
             path = FourNeighborPath(path)
-            
+
             self.path_to_follow = path.obtain_physical_path(
                 self.path_planner, self.pose2d[:2]
             )
@@ -266,8 +270,6 @@ class ControllerNode(Node):
             self.state = RobotState.PATH_FOLLOWING
             self.current_target_index = 0
             self.update_goal_angle()
-
-            
 
     def mapping_loop(self):
         """Updates the room mapper based on measurments from scanners."""
@@ -344,12 +346,13 @@ class ControllerNode(Node):
             and self.state != RobotState.PATH_FOLLOWING
             and self.state != RobotState.ROTATE_360
             and self.state != RobotState.RETURN_TO_BASE
+            and self.state != RobotState.SCAN_FORWARD
         ):
-            # if we have completeed the initial swept it switches to 'nuevo' state
+            # if we have completeed the initial swept it switches to 'path_following' state
             if self.away_from_starting_pos:
                 self.update_path()
                 if self.path_to_follow:
-                    self.get_logger().info("entro a path cuando no debo")
+                    # self.get_logger().info("entro a path cuando no debo")
                     self.state = RobotState.PATH_FOLLOWING
                     self.current_target_index = 0
                     self.update_goal_angle()
@@ -403,7 +406,7 @@ class ControllerNode(Node):
 
             # if we have already avoided it we return to 'wall_detection' state continuing the search of the wall
             elif state == "free_way":
-                self.state = RobotState.WallDetection
+                self.state = RobotState.WALL_DETECTION
                 self.get_logger().info("<<<<<< Objeto esquivado")
 
             # otherwise we are still turning
@@ -547,7 +550,7 @@ class ControllerNode(Node):
                     self.rotation_done = True
                     self.away_from_starting_pos = False
                     return
-                    #self.done_future.set_result(True)
+                    # self.done_future.set_result(True)
 
                 self.get_logger().info("Scanning 360.")
                 self.last_angle = self.pose2d[2]
@@ -620,6 +623,10 @@ class ControllerNode(Node):
                 else:
                     self.get_logger().info("Total scan completed")
                     self.state = RobotState.RETURN_TO_BASE
+                    np.save(
+                        "array_big.npy",
+                        self.room_mapper.occupancy_grid.to_numpy_array().T,
+                    )
 
             else:
                 cmd_vel = Twist()
@@ -633,15 +640,16 @@ class ControllerNode(Node):
             self.path_planner = PathPlanner(
                 occupancy_grid, RoomMapper.ROOM_SIZE, robot_large_side
             )
+            np.save("array_a*.npy", occupancy_grid)
             path = self.path_planner.compute_a_star_path(
                 start=self.path_planner.calculate_cell_from_physical(self.pose2d[:2]),
                 goal=self.path_planner.calculate_cell_from_physical(self.base_pose),
             )
-            
+
             self.path_to_follow_grid = np.array(path)
-            
+
             path = FourNeighborPath(path)
-            
+
             self.path_to_follow = path.obtain_physical_path(
                 self.path_planner, self.pose2d[:2]
             )
@@ -690,6 +698,24 @@ class ControllerNode(Node):
             self.get_logger().info("All scanned, waiting")
         elif self.state == RobotState.ROOM_SWEEP:
             self.get_logger().info("Sweeping the room")
+            self.state = RobotState.PATH_FOLLOWING
+            robot_large_side = max(RoomMapper.RM_DIMS)
+
+            occupancy_grid = self.room_mapper.occupancy_grid.to_numpy_array().T
+            self.path_planner = PathPlanner(
+                occupancy_grid, RoomMapper.ROOM_SIZE, robot_large_side
+            )
+
+            path = self.path_planner.plan_full_coverage_path(
+                self.path_planner.calculate_cell_from_physical(self.pose2d[:2])
+            )
+            path = FourNeighborPath(path)
+            self.path_to_follow = path.obtain_physical_path(
+                self.path_planner, self.pose2d[:2]
+            )
+            self.current_target_index = 0
+            self.update_goal_angle()
+            self.get_logger().info("Path: " + str(self.path_to_follow))
 
 
 def main():
