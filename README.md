@@ -3,7 +3,8 @@
 ## Video demonstration
 
 part one: https://www.youtube.com/watch?v=41ErA4UiOQw \
-part two: https://www.youtube.com/watch?v=dbaJPfQZw5I
+part two: https://www.youtube.com/watch?v=dbaJPfQZw5I \
+part three: https://youtu.be/x_BRSl7MinE
 
 ## The code
 
